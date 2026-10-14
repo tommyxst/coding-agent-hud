@@ -1,0 +1,1118 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Coding Agent HUD - Interactive Prototype (V0.1 MVP)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --hud-opacity: 0.92;
+    }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      user-select: none;
+      overflow: hidden;
+    }
+    .font-mono-tabular {
+      font-family: 'JetBrains Mono', monospace;
+      font-variant-numeric: tabular-nums;
+    }
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 9999px; }
+
+    /* HUD Glassmorphism */
+    .hud-glass {
+      background: rgba(11, 13, 17, var(--hud-opacity));
+      backdrop-filter: blur(16px) saturate(180%);
+      -webkit-backdrop-filter: blur(16px) saturate(180%);
+      box-shadow: 
+        0 20px 40px -15px rgba(0, 0, 0, 0.7),
+        0 0 0 1px rgba(255, 255, 255, 0.08),
+        inset 0 1px 0 0 rgba(255, 255, 255, 0.12);
+      transition: width 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+                  transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+                  opacity 0.2s ease,
+                  border-color 0.25s ease;
+    }
+
+    /* Waiting User Amber Pulse Border */
+    @keyframes amber-border-pulse {
+      0%, 100% { box-shadow: 0 20px 40px -15px rgba(0,0,0,0.7), 0 0 0 1.5px rgba(245, 158, 11, 0.85), 0 0 18px -2px rgba(245, 158, 11, 0.35); }
+      50% { box-shadow: 0 20px 40px -15px rgba(0,0,0,0.7), 0 0 0 1px rgba(245, 158, 11, 0.25), 0 0 6px -2px rgba(245, 158, 11, 0.1); }
+    }
+    .hud-waiting-glow {
+      animation: amber-border-pulse 2s infinite ease-in-out;
+    }
+
+    /* Error Red Border */
+    .hud-error-glow {
+      box-shadow: 0 20px 40px -15px rgba(0,0,0,0.7), 0 0 0 1.5px rgba(239, 68, 68, 0.85), 0 0 18px -2px rgba(239, 68, 68, 0.3);
+    }
+
+    /* Ghost Mode (Click-Through Simulation) */
+    .hud-ghost-mode {
+      opacity: 0.48 !important;
+      pointer-events: none;
+    }
+
+    /* Simulated Terminal Highlight */
+    @keyframes term-flash {
+      0%, 100% { box-shadow: 0 0 0 1px rgba(255,255,255,0.07); }
+      30% { box-shadow: 0 0 0 2px #38bdf8, 0 0 25px rgba(56, 189, 248, 0.45); transform: scale(1.01); }
+    }
+    .term-active-flash {
+      animation: term-flash 0.9s ease-out;
+    }
+  </style>
+</head>
+<body class="bg-[#07090e] text-slate-200 h-screen w-screen flex overflow-hidden">
+
+  <!-- ==================== 左侧：交互式模拟控制台 (Simulator Panel) ==================== -->
+  <aside class="w-[370px] h-full bg-[#0f1219] border-r border-white/10 flex flex-col z-30 shrink-0 shadow-2xl">
+    <!-- Header -->
+    <div class="px-5 py-4 border-b border-white/10 flex items-center justify-between bg-[#131720]">
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          <h1 class="font-semibold text-sm tracking-wide text-white">Coding Agent HUD 控制台</h1>
+        </div>
+        <p class="text-[11px] text-slate-400 mt-0.5">V0.1 MVP 交互原型 · 模拟 Rust Event Bus</p>
+      </div>
+      <span class="px-2 py-0.5 text-[10px] font-mono-tabular bg-white/5 border border-white/10 rounded text-slate-300">Win11 + WSL2</span>
+    </div>
+
+    <div class="flex-1 overflow-y-auto p-4 space-y-5">
+      
+      <!-- 1. HUD 视图层级切换 -->
+      <section class="space-y-2">
+        <div class="flex items-center justify-between">
+          <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">1. HUD 形态 (View Mode)</label>
+          <span class="text-[11px] text-slate-500">也可直接点击 HUD 切换</span>
+        </div>
+        <div class="grid grid-cols-3 gap-1.5 bg-[#090b10] p-1 rounded-lg border border-white/5">
+          <button onclick="setHudMode('compact')" id="btn-mode-compact" class="py-1.5 text-xs font-medium rounded-md transition">Compact</button>
+          <button onclick="setHudMode('active')" id="btn-mode-active" class="py-1.5 text-xs font-medium rounded-md transition">Active</button>
+          <button onclick="setHudMode('expanded')" id="btn-mode-expanded" class="py-1.5 text-xs font-medium rounded-md transition">Expanded</button>
+        </div>
+      </section>
+
+      <!-- 2. 选择要操控的 Session -->
+      <section class="space-y-2">
+        <div class="flex items-center justify-between">
+          <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">2. 选择并发会话 (Target Session)</label>
+          <button onclick="addNewSession()" class="text-[11px] text-sky-400 hover:text-sky-300 font-medium">+ 新增会话</button>
+        </div>
+        <div id="simulator-session-list" class="space-y-1.5">
+          <!-- 动态渲染 -->
+        </div>
+      </section>
+
+      <!-- 3. 触发 Agent 生命周期事件 -->
+      <section class="space-y-2">
+        <div class="flex items-center justify-between">
+          <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">3. 触发状态事件 (Simulate Event)</label>
+          <span id="current-target-label" class="text-[11px] font-mono-tabular text-amber-400"></span>
+        </div>
+        <div class="grid grid-cols-2 gap-1.5">
+          <button onclick="triggerEvent('THINKING')" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.04] hover:bg-white/[0.09] border border-white/5 text-xs text-left transition">
+            <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+            <div>
+              <div class="font-medium text-slate-200">Thinking</div>
+              <div class="text-[10px] text-slate-500">模型推理呼吸动画</div>
+            </div>
+          </button>
+          <button onclick="triggerEvent('TOOL_BASH')" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.04] hover:bg-white/[0.09] border border-white/5 text-xs text-left transition">
+            <span class="w-2 h-2 rounded-full bg-sky-400"></span>
+            <div>
+              <div class="font-medium text-slate-200">Tool: Bash</div>
+              <div class="text-[10px] text-slate-500">粒子向右 → 执行测试</div>
+            </div>
+          </button>
+          <button onclick="triggerEvent('TOOL_READ')" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.04] hover:bg-white/[0.09] border border-white/5 text-xs text-left transition">
+            <span class="w-2 h-2 rounded-full bg-indigo-400"></span>
+            <div>
+              <div class="font-medium text-slate-200">Tool: Read/Edit</div>
+              <div class="text-[10px] text-slate-500">读取并修改代码文件</div>
+            </div>
+          </button>
+          <button onclick="triggerEvent('RESPONDING')" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.04] hover:bg-white/[0.09] border border-white/5 text-xs text-left transition">
+            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <div>
+              <div class="font-medium text-slate-200">Responding</div>
+              <div class="text-[10px] text-slate-500">粒子向左 ← 流式输出</div>
+            </div>
+          </button>
+          <button onclick="triggerEvent('WAITING_USER')" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-xs text-left transition">
+            <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+            <div>
+              <div class="font-medium text-amber-300">Waiting User</div>
+              <div class="text-[10px] text-amber-400/70">请求高危命令审批</div>
+            </div>
+          </button>
+          <button onclick="triggerEvent('IDLE')" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.04] hover:bg-white/[0.09] border border-white/5 text-xs text-left transition">
+            <span class="w-2 h-2 rounded-full bg-slate-500"></span>
+            <div>
+              <div class="font-medium text-slate-300">Idle (0 FPS)</div>
+              <div class="text-[10px] text-slate-500">停止动画释放 CPU</div>
+            </div>
+          </button>
+          <button onclick="triggerEvent('ERROR')" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/25 text-xs text-left transition">
+            <span class="w-2 h-2 rounded-full bg-red-500"></span>
+            <div>
+              <div class="font-medium text-red-300">Error</div>
+              <div class="text-[10px] text-red-400/70">工具执行或网络异常</div>
+            </div>
+          </button>
+          <button onclick="triggerEvent('ENDED')" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.04] hover:bg-white/[0.09] border border-white/5 text-xs text-left transition">
+            <span class="w-2 h-2 rounded-full border border-slate-500"></span>
+            <div>
+              <div class="font-medium text-slate-400">Session End</div>
+              <div class="text-[10px] text-slate-500">进程退出并移除会话</div>
+            </div>
+          </button>
+        </div>
+      </section>
+
+      <!-- 4. Context 与 Token 模拟 -->
+      <section class="space-y-2.5 bg-white/[0.02] p-3 rounded-xl border border-white/5">
+        <div class="flex items-center justify-between">
+          <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">4. Context 水位线模拟</label>
+          <span id="context-slider-val" class="text-xs font-mono-tabular text-sky-400">36% (72k / 200k)</span>
+        </div>
+        <input id="context-slider" type="range" min="5" max="98" value="36" oninput="updateContextUsage(this.value)" class="w-full accent-sky-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg" />
+        <div class="flex justify-between text-[10px] text-slate-500 font-mono-tabular">
+          <span>Normal (&lt;70%)</span>
+          <span class="text-amber-400/80">70%+ 提醒</span>
+          <span class="text-rose-400/80">90%+ 临界</span>
+        </div>
+        <label class="flex items-center justify-between pt-1 cursor-pointer">
+          <span class="text-xs text-slate-300">标记为估算值 (显示 <code class="text-amber-300">~72k</code>)</span>
+          <input type="checkbox" id="chk-estimated" onchange="toggleSetting('estimated', this.checked)" class="accent-sky-400 rounded cursor-pointer" />
+        </label>
+      </section>
+
+      <!-- 5. 隐私与 Windows 专属交互设置 -->
+      <section class="space-y-2 bg-white/[0.02] p-3 rounded-xl border border-white/5">
+        <label class="text-xs font-semibold uppercase tracking-wider text-slate-400 block mb-1">5. 隐私与窗口行为 (Settings)</label>
+        
+        <label class="flex items-center justify-between py-1 cursor-pointer">
+          <span class="text-xs text-slate-300">显示具体命令与文件名 (Privacy)</span>
+          <input type="checkbox" checked onchange="toggleSetting('showDetail', this.checked)" class="accent-sky-400 rounded cursor-pointer" />
+        </label>
+
+        <label class="flex items-center justify-between py-1 cursor-pointer">
+          <span class="text-xs text-slate-300">显示仓库完整路径 (Repo Path)</span>
+          <input type="checkbox" checked onchange="toggleSetting('showPath', this.checked)" class="accent-sky-400 rounded cursor-pointer" />
+        </label>
+
+        <label class="flex items-center justify-between py-1 cursor-pointer">
+          <span class="text-xs text-slate-300">减弱动画 (Reduced Motion)</span>
+          <input type="checkbox" onchange="toggleSetting('reducedMotion', this.checked)" class="accent-sky-400 rounded cursor-pointer" />
+        </label>
+
+        <label class="flex items-center justify-between py-1 cursor-pointer">
+          <div>
+            <div class="text-xs text-sky-300 font-medium">鼠标穿透模式 (Ghost Mode)</div>
+            <div class="text-[10px] text-slate-500">开启后可按住 <kbd class="px-1 py-0.5 bg-white/10 rounded text-slate-300">Alt</kbd> 键临时唤醒交互</div>
+          </div>
+          <input type="checkbox" id="chk-ghost" onchange="toggleSetting('ghostMode', this.checked)" class="accent-sky-400 rounded cursor-pointer" />
+        </label>
+
+        <div class="pt-1">
+          <div class="flex justify-between text-xs text-slate-400 mb-1">
+            <span>HUD 背景透明度 (Opacity)</span>
+            <span id="opacity-val" class="font-mono-tabular">92%</span>
+          </div>
+          <input type="range" min="45" max="100" value="92" oninput="updateOpacity(this.value)" class="w-full accent-sky-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg" />
+        </div>
+      </section>
+    </div>
+
+    <!-- 底部性能遥测状态栏 -->
+    <div class="px-4 py-2.5 bg-[#090b10] border-t border-white/10 flex items-center justify-between text-[11px] font-mono-tabular text-slate-400">
+      <div class="flex items-center gap-2">
+        <span id="perf-fps-dot" class="w-2 h-2 rounded-full bg-emerald-400"></span>
+        <span>UI Render: <strong id="perf-fps" class="text-slate-200">60 FPS</strong></span>
+      </div>
+      <div>CPU: <strong id="perf-cpu" class="text-emerald-400">0.3%</strong></div>
+    </div>
+  </aside>
+
+  <!-- ==================== 右侧：模拟 Windows 11 开发者桌面工作区 ==================== -->
+  <main id="desktop-area" class="flex-1 h-full relative overflow-hidden bg-gradient-to-br from-[#0b0f19] via-[#090d16] to-[#05070b] flex flex-col justify-between select-none">
+    
+    <!-- 顶部操作提示条 -->
+    <div class="mx-6 mt-4 px-4 py-2 rounded-lg bg-white/[0.03] border border-white/5 flex items-center justify-between text-xs text-slate-400 z-10">
+      <div class="flex items-center gap-4">
+        <span>💡 <strong>交互提示：</strong>按住 HUD 顶部可自由拖拽；贴近屏幕右边缘可自动磁吸</span>
+        <span class="text-slate-600">|</span>
+        <span>点击 HUD 卡片主体可切换 <code class="text-slate-200">Active ↔ Expanded</code></span>
+        <span class="text-slate-600">|</span>
+        <span>点击 <code class="text-slate-200">📌</code> 锁定主会话，点击 <code class="text-slate-200">↗</code> 唤醒对应终端</span>
+      </div>
+      <button onclick="resetHudPosition()" class="text-sky-400 hover:text-sky-300 text-xs font-medium">重置 HUD 位置</button>
+    </div>
+
+    <!-- 模拟背景：4 个并行的 IDE / 终端窗口 -->
+    <div class="flex-1 grid grid-cols-2 grid-rows-2 gap-4 p-6 pt-3 pb-14 opacity-75">
+      
+      <!-- 模拟终端 1: Claude Code (WSL) -->
+      <div id="term-s1" class="rounded-xl bg-[#0d1117]/90 border border-white/10 flex flex-col overflow-hidden transition-all duration-300">
+        <div class="px-3.5 py-2 bg-[#161b22] border-b border-white/5 flex items-center justify-between text-[11px] font-mono-tabular text-slate-400">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-[#D97757]"></span>
+            <span class="text-slate-200 font-medium">Windows Terminal — Ubuntu-24.04 (WSL2)</span>
+          </div>
+          <span>PID: 18492</span>
+        </div>
+        <div class="p-4 font-mono-tabular text-xs space-y-2 text-slate-300 flex-1">
+          <div class="text-slate-500">jiayang@wsl:~/repos/ai-experience-qa (feature/hud*) $ claude</div>
+          <div class="text-[#D97757] font-semibold">╭─── Claude Code v1.0.24 ───────────────────────────╮</div>
+          <div class="text-slate-300">│ Project: /home/jiayang/repos/ai-experience-qa     │</div>
+          <div class="text-[#D97757] font-semibold">╰───────────────────────────────────────────────────╯</div>
+          <div id="term-log-s1" class="text-sky-300 pt-1">● Running Bash(npm run test:unit)...</div>
+        </div>
+      </div>
+
+      <!-- 模拟终端 2: Claude Code (Win) -->
+      <div id="term-s2" class="rounded-xl bg-[#0d1117]/90 border border-white/10 flex flex-col overflow-hidden transition-all duration-300">
+        <div class="px-3.5 py-2 bg-[#161b22] border-b border-white/5 flex items-center justify-between text-[11px] font-mono-tabular text-slate-400">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+            <span class="text-slate-200 font-medium">PowerShell 7 — admin-portal (Native Win)</span>
+          </div>
+          <span>PID: 29104</span>
+        </div>
+        <div class="p-4 font-mono-tabular text-xs space-y-2 text-slate-300 flex-1">
+          <div class="text-slate-500">PS C:\Users\jiayang\Projects\admin-portal&gt; claude</div>
+          <div class="text-amber-300 bg-amber-500/10 border border-amber-500/30 p-2.5 rounded-lg">
+            <div>⚠ Permission Requested:</div>
+            <div class="text-white mt-1">Run command: <code class="text-amber-200">npx prisma migrate reset --force</code> ?</div>
+            <div class="text-slate-400 text-[11px] mt-1">[Y] Yes  [N] No  [A] Always allow</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 模拟终端 3: Codex (WSL) -->
+      <div id="term-s3" class="rounded-xl bg-[#0d1117]/90 border border-white/10 flex flex-col overflow-hidden transition-all duration-300">
+        <div class="px-3.5 py-2 bg-[#161b22] border-b border-white/5 flex items-center justify-between text-[11px] font-mono-tabular text-slate-400">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-[#10A37F]"></span>
+            <span class="text-slate-200 font-medium">Windows Terminal — wealth-workspace (WSL2)</span>
+          </div>
+          <span>PID: 44012</span>
+        </div>
+        <div class="p-4 font-mono-tabular text-xs space-y-2 text-slate-300 flex-1">
+          <div class="text-slate-500">jiayang@wsl:~/repos/wealth-workspace (feature/copilot*) $ codex</div>
+          <div class="text-[#10A37F]">Codex Session initialized (~/.codex/sessions/rollout-092.jsonl)</div>
+          <div class="text-slate-400">Thinking about portfolio rebalancing edge cases...</div>
+        </div>
+      </div>
+
+      <!-- 模拟终端 4: Codex (Win) -->
+      <div id="term-s4" class="rounded-xl bg-[#0d1117]/90 border border-white/10 flex flex-col overflow-hidden transition-all duration-300">
+        <div class="px-3.5 py-2 bg-[#161b22] border-b border-white/5 flex items-center justify-between text-[11px] font-mono-tabular text-slate-400">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-slate-500"></span>
+            <span class="text-slate-200 font-medium">VS Code Integrated Terminal — docs-site (Win)</span>
+          </div>
+          <span>PID: 10388</span>
+        </div>
+        <div class="p-4 font-mono-tabular text-xs space-y-2 text-slate-300 flex-1">
+          <div class="text-slate-500">PS C:\Users\jiayang\Projects\docs-site&gt; codex</div>
+          <div class="text-slate-400">✓ Task completed. Waiting for next user prompt...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== 核心组件：Coding Agent HUD 悬浮窗 ==================== -->
+    <div id="hud-container" style="top: 68px; right: 28px;" class="fixed z-50 select-none">
+      <!-- 动态由 JS 渲染 Compact / Active / Expanded 以及 1+N 多会话堆叠 -->
+    </div>
+
+    <!-- 模拟 Windows 11 底部任务栏与系统托盘 -->
+    <div class="h-10 bg-[#0c0f17]/95 border-t border-white/10 px-4 flex items-center justify-between text-xs z-20">
+      <div class="flex items-center gap-3">
+        <span class="px-2 py-1 rounded bg-white/5 text-slate-300 font-medium">⊞ Win11 Desktop</span>
+        <span class="text-slate-500 font-mono-tabular">VS Code · Windows Terminal (4)</span>
+      </div>
+      <div class="flex items-center gap-4 font-mono-tabular text-[11px]">
+        <!-- 托盘图标 -->
+        <button onclick="toggleHudVisibility()" class="flex items-center gap-1.5 px-2.5 py-1 rounded bg-sky-500/15 border border-sky-500/30 text-sky-300 hover:bg-sky-500/25 transition" title="点击显示/隐藏 HUD">
+          <span class="w-2 h-2 rounded-full bg-sky-400"></span>
+          <span>Agent HUD Tray</span>
+        </button>
+        <span class="text-slate-400">10:36 AM</span>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    // ==================== 1. 统一会话数据模型 (Unified Session Model) ====================
+    let sessions = [
+      {
+        id: 's1',
+        agent: { type: 'claude', name: 'Claude Code', short: 'CC', color: '#D97757' },
+        environment: { type: 'wsl', label: 'WSL', distro: 'Ubuntu-24.04' },
+        project: {
+          name: 'ai-experience-qa',
+          cwd: '/home/jiayang/repos/ai-experience-qa',
+          branch: 'feature/hud',
+          dirtyFiles: 5,
+          addedLines: 183,
+          deletedLines: 42
+        },
+        runtime: {
+          state: 'TOOL_RUNNING', // STARTING, IDLE, THINKING, TOOL_RUNNING, RESPONDING, WAITING_USER, ERROR, ENDED
+          tool: 'Bash',
+          detail: 'npm run test:unit',
+          startedAt: Date.now() - 222000,
+          updatedAt: Date.now()
+        },
+        model: { name: 'Claude 3.7 Sonnet' },
+        context: { used: 72431, limit: 200000, estimated: false },
+        tokens: { input: 72431, output: 6328, cached: 31205 }
+      },
+      {
+        id: 's2',
+        agent: { type: 'claude', name: 'Claude Code', short: 'CC', color: '#D97757' },
+        environment: { type: 'windows', label: 'Win' },
+        project: {
+          name: 'admin-portal',
+          cwd: 'C:\\Users\\jiayang\\Projects\\admin-portal',
+          branch: 'main',
+          dirtyFiles: 2,
+          addedLines: 45,
+          deletedLines: 12
+        },
+        runtime: {
+          state: 'WAITING_USER',
+          tool: 'Bash',
+          detail: 'npx prisma migrate reset --force',
+          startedAt: Date.now() - 140000,
+          updatedAt: Date.now() - 5000
+        },
+        model: { name: 'Claude 3.7 Opus' },
+        context: { used: 62000, limit: 200000, estimated: false },
+        tokens: { input: 62000, output: 4120, cached: 18400 }
+      },
+      {
+        id: 's3',
+        agent: { type: 'codex', name: 'Codex', short: 'CX', color: '#10A37F' },
+        environment: { type: 'wsl', label: 'WSL', distro: 'Ubuntu-24.04' },
+        project: {
+          name: 'wealth-workspace',
+          cwd: '/home/jiayang/repos/wealth-workspace',
+          branch: 'feature/copilot',
+          dirtyFiles: 8,
+          addedLines: 310,
+          deletedLines: 89
+        },
+        runtime: {
+          state: 'THINKING',
+          tool: 'Model',
+          detail: 'Analyzing portfolio rebalancing constraints...',
+          startedAt: Date.now() - 95000,
+          updatedAt: Date.now() - 12000
+        },
+        model: { name: 'GPT-5.6 Codex' },
+        context: { used: 85760, limit: 128000, estimated: false },
+        tokens: { input: 85760, output: 9410, cached: 42000 }
+      },
+      {
+        id: 's4',
+        agent: { type: 'codex', name: 'Codex', short: 'CX', color: '#10A37F' },
+        environment: { type: 'windows', label: 'Win' },
+        project: {
+          name: 'docs-site',
+          cwd: 'C:\\Users\\jiayang\\Projects\\docs-site',
+          branch: 'docs/api-v2',
+          dirtyFiles: 0,
+          addedLines: 0,
+          deletedLines: 0
+        },
+        runtime: {
+          state: 'IDLE',
+          tool: '-',
+          detail: 'Waiting for next user prompt',
+          startedAt: Date.now() - 510000,
+          updatedAt: Date.now() - 60000
+        },
+        model: { name: 'GPT-5.6 Codex' },
+        context: { used: 15360, limit: 128000, estimated: false },
+        tokens: { input: 15360, output: 2100, cached: 8000 }
+      }
+    ];
+
+    // 全局 HUD UI 状态
+    let hudState = {
+      mode: 'active',          // 'compact' | 'active' | 'expanded'
+      primarySessionId: 's1',
+      selectedSimSessionId: 's1',
+      pinnedSessionId: null,
+      visible: true,
+      dockedEdge: false,
+      settings: {
+        showDetail: true,
+        showPath: true,
+        reducedMotion: false,
+        ghostMode: false
+      }
+    };
+
+    // ==================== 2. 状态元数据映射 ====================
+    const STATE_META = {
+      THINKING:     { label: 'Thinking',     dot: 'bg-amber-400',   text: 'text-amber-300',   targetNode: 'Model' },
+      TOOL_RUNNING: { label: 'Tool Running', dot: 'bg-sky-400',     text: 'text-sky-300',     targetNode: 'Bash' },
+      RESPONDING:   { label: 'Responding',   dot: 'bg-emerald-400', text: 'text-emerald-300', targetNode: 'Model' },
+      WAITING_USER: { label: 'Waiting User', dot: 'bg-amber-400 animate-ping', text: 'text-amber-300', targetNode: 'Approval' },
+      ERROR:        { label: 'Error',        dot: 'bg-rose-500',    text: 'text-rose-400',    targetNode: 'Exception' },
+      IDLE:         { label: 'Idle',         dot: 'bg-slate-500',   text: 'text-slate-400',   targetNode: 'Idle' }
+    };
+
+    function formatK(num) {
+      if (num >= 1000) return (num / 1000).toFixed(num % 1000 === 0 ? 0 : 1) + 'k';
+      return num.toString();
+    }
+
+    function formatDuration(startedAt) {
+      const sec = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+      const m = String(Math.floor(sec / 60)).padStart(2, '0');
+      const s = String(sec % 60).padStart(2, '0');
+      return `${m}:${s}`;
+    }
+
+    function getSortedSessions() {
+      return [...sessions].sort((a, b) => {
+        if (a.id === hudState.primarySessionId) return -1;
+        if (b.id === hudState.primarySessionId) return 1;
+        const aActive = a.runtime.state !== 'IDLE' ? 1 : 0;
+        const bActive = b.runtime.state !== 'IDLE' ? 1 : 0;
+        if (aActive !== bActive) return bActive - aActive;
+        return b.runtime.updatedAt - a.runtime.updatedAt;
+      });
+    }
+
+    // ==================== 3. 渲染 HUD 主视图 ====================
+    function renderHUD() {
+      const container = document.getElementById('hud-container');
+      if (!hudState.visible || sessions.length === 0) {
+        container.innerHTML = `
+          <div onclick="addNewSession()" class="hud-glass px-3.5 py-2 rounded-full text-xs text-slate-400 cursor-pointer hover:text-white flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-slate-600"></span>
+            <span>No Active Agent Sessions (Click to spawn)</span>
+          </div>`;
+        return;
+      }
+
+      const sorted = getSortedSessions();
+      const primary = sorted[0];
+      const secondaries = sorted.slice(1);
+      const pct = Math.min(100, Math.round((primary.context.used / primary.context.limit) * 100));
+      const meta = STATE_META[primary.runtime.state] || STATE_META.IDLE;
+
+      // Context 颜色阈值 (70%+ 琥珀色, 90%+ 珊瑚红)
+      let barColor = 'bg-sky-400';
+      let pctBadge = 'text-slate-300';
+      if (pct >= 90) { barColor = 'bg-rose-500'; pctBadge = 'text-rose-400 font-semibold'; }
+      else if (pct >= 70) { barColor = 'bg-amber-400'; pctBadge = 'text-amber-300 font-semibold'; }
+
+      // 特殊边框高亮
+      let borderGlowClass = '';
+      if (primary.runtime.state === 'WAITING_USER') borderGlowClass = 'hud-waiting-glow';
+      else if (primary.runtime.state === 'ERROR') borderGlowClass = 'hud-error-glow';
+
+      const ghostClass = hudState.settings.ghostMode ? 'hud-ghost-mode' : '';
+      const estPrefix = primary.context.estimated ? '~' : '';
+
+      // ---------------- 形态 1: COMPACT 胶囊态 ----------------
+      if (hudState.mode === 'compact') {
+        container.innerHTML = `
+          <div class="hud-glass ${borderGlowClass} ${ghostClass} rounded-full px-3.5 py-1.5 flex items-center gap-2.5 text-xs cursor-pointer select-none"
+               onmousedown="startDrag(event)"
+               onclick="handleCardClick(event, 'active')">
+            <span class="w-2 h-2 rounded-full ${meta.dot}"></span>
+            <span class="font-mono-tabular font-semibold px-1.5 py-0.5 rounded text-[10px] bg-white/10 text-white">
+              ${primary.agent.short}·${primary.environment.label}
+            </span>
+            <span class="font-medium text-slate-100 truncate max-w-[120px]">${primary.project.name}</span>
+            <span class="text-slate-400 font-mono-tabular text-[11px]">⎇ ${primary.project.branch}${primary.project.dirtyFiles > 0 ? ` (+${primary.project.dirtyFiles})` : ''}</span>
+            <span class="text-slate-600">|</span>
+            <span class="font-mono-tabular text-[11px] ${pctBadge}">${estPrefix}${pct}%</span>
+            ${secondaries.length > 0 ? `<span class="px-1.5 py-0.2 rounded-full bg-white/10 text-[10px] font-mono-tabular text-slate-300">+${secondaries.length}</span>` : ''}
+          </div>
+        `;
+        updateSimulatorButtons();
+        return;
+      }
+
+      // ---------------- 形态 2 & 3: ACTIVE / EXPANDED 卡片态 ----------------
+      const detailText = hudState.settings.showDetail
+        ? primary.runtime.detail
+        : (primary.runtime.state === 'TOOL_RUNNING' ? 'Running command (hidden by privacy)...' : 'Activity detail masked');
+
+      const repoPathText = hudState.settings.showPath
+        ? primary.project.cwd
+        : '•••/' + primary.project.name;
+
+      const cachePct = primary.tokens.input > 0
+        ? Math.round((primary.tokens.cached / primary.tokens.input) * 100)
+        : 0;
+
+      const isPinned = hudState.pinnedSessionId === primary.id;
+
+      container.innerHTML = `
+        <div class="hud-glass ${borderGlowClass} ${ghostClass} w-[356px] rounded-2xl overflow-hidden text-xs">
+          
+          <!-- 顶部拖拽与身份栏 (Header) -->
+          <div onmousedown="startDrag(event)" class="px-3.5 pt-2.5 pb-2 bg-white/[0.02] border-b border-white/[0.07] cursor-move flex items-center justify-between">
+            <div class="flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full" style="background:${primary.agent.color}"></span>
+              <span class="font-semibold text-white tracking-tight">${primary.agent.name}</span>
+              <span class="px-1.5 py-0.5 text-[10px] font-mono-tabular rounded bg-white/10 text-slate-300">${primary.environment.label}</span>
+              ${primary.context.estimated ? `<span class="px-1 py-0.5 text-[9px] font-mono-tabular rounded bg-amber-500/20 text-amber-300">EST</span>` : ''}
+            </div>
+
+            <div class="flex items-center gap-1">
+              <!-- Pin 按钮 -->
+              <button onclick="togglePin(event, '${primary.id}')" title="${isPinned ? '已固定为主会话 (点击取消)' : '固定为主会话 (防止自动切换)'}"
+                class="p-1 rounded hover:bg-white/10 transition ${isPinned ? 'text-amber-400 bg-amber-400/15' : 'text-slate-400'}">
+                📌
+              </button>
+              <!-- 唤醒终端按钮 -->
+              <button onclick="wakeTerminal(event, '${primary.id}')" title="唤醒并置顶该会话所在的终端窗口"
+                class="px-1.5 py-0.5 rounded hover:bg-sky-500/20 text-slate-300 hover:text-sky-300 font-mono-tabular text-[11px] transition">
+                ↗
+              </button>
+              <!-- 折叠为 Compact 按钮 -->
+              <button onclick="setHudMode('compact')" title="收起为单行胶囊 (Compact)"
+                class="px-1.5 py-0.5 rounded hover:bg-white/10 text-slate-400 hover:text-white transition">
+                —
+              </button>
+            </div>
+          </div>
+
+          <!-- 主卡片内容区 (点击可切换 Active / Expanded) -->
+          <div onclick="handleCardClick(event)" class="p-3.5 space-y-3 cursor-pointer hover:bg-white/[0.01] transition">
+            
+            <!-- 项目与 Git 分支状态 -->
+            <div class="flex items-center justify-between">
+              <div class="font-semibold text-sm text-white truncate max-w-[185px]">${primary.project.name}</div>
+              <div class="flex items-center gap-1.5 font-mono-tabular text-[11px] text-slate-300 bg-white/[0.05] px-2 py-0.5 rounded-md border border-white/5">
+                <span class="text-slate-400">⎇</span>
+                <span class="truncate max-w-[95px]">${primary.project.branch}</span>
+                ${primary.project.dirtyFiles > 0 
+                  ? `<span class="text-amber-400 font-medium">● ${primary.project.dirtyFiles}</span>` 
+                  : `<span class="text-emerald-400">✓</span>`}
+              </div>
+            </div>
+
+            <!-- SVG 能量轨道区 (Pipeline Track) -->
+            <div class="bg-[#07090d]/90 rounded-xl p-2.5 border border-white/[0.06] space-y-1.5">
+              <div class="flex items-center justify-between gap-2">
+                <!-- 左节点: Agent -->
+                <div class="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white/[0.05] border border-white/5 shrink-0">
+                  <span class="w-2 h-2 rounded-full ${meta.dot}"></span>
+                  <span class="font-mono-tabular text-[11px] font-medium text-slate-200">${primary.agent.short}</span>
+                </div>
+
+                <!-- 中间 SVG 粒子动画轨道 -->
+                <div class="flex-1 h-6 flex items-center justify-center relative">
+                  <svg class="w-full h-6 overflow-visible" viewBox="0 0 140 24">
+                    <!-- 基础轨道线 -->
+                    <line x1="6" y1="12" x2="134" y2="12" stroke="rgba(255,255,255,0.12)" stroke-width="1.5" stroke-dasharray="3 3" />
+                    <!-- 中心 HUD 锚点 -->
+                    <circle id="svg-center-ring" cx="70" cy="12" r="4" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="1.2" />
+                    <!-- 动态粒子 -->
+                    <circle id="svg-particle-1" cx="70" cy="12" r="3.5" fill="${primary.agent.color}" />
+                    <circle id="svg-particle-2" cx="70" cy="12" r="2.2" fill="#38bdf8" opacity="0" />
+                  </svg>
+                </div>
+
+                <!-- 右节点: Target (Model / Tool / Approval) -->
+                <div class="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white/[0.05] border border-white/5 shrink-0">
+                  <span class="font-mono-tabular text-[11px] font-medium ${meta.text}">
+                    ${primary.runtime.state === 'TOOL_RUNNING' ? `⌘ ${primary.runtime.tool}` : meta.targetNode}
+                  </span>
+                </div>
+              </div>
+
+              <!-- 实时动作单行摘要 -->
+              <div class="flex items-center justify-between text-[11px] font-mono-tabular pt-0.5">
+                <div class="truncate text-slate-300 max-w-[240px]">
+                  <span class="text-slate-500 mr-1">▸</span>${detailText}
+                </div>
+                <span class="${meta.text} text-[10px] uppercase tracking-wider shrink-0">${meta.label}</span>
+              </div>
+            </div>
+
+            <!-- Context 进度条与底部统计 -->
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between text-[11px] font-mono-tabular">
+                <span class="text-slate-400">Context</span>
+                <div>
+                  <span class="text-slate-200">${estPrefix}${formatK(primary.context.used)}</span>
+                  <span class="text-slate-500"> / ${formatK(primary.context.limit)}</span>
+                  <span class="ml-1.5 ${pctBadge}">(${pct}%)</span>
+                </div>
+              </div>
+              <div class="w-full h-1.5 bg-white/[0.07] rounded-full overflow-hidden">
+                <div class="h-full ${barColor} transition-all duration-300 rounded-full" style="width: ${pct}%"></div>
+              </div>
+              <div class="flex items-center justify-between text-[11px] font-mono-tabular text-slate-400 pt-0.5">
+                <div>
+                  <span>In <strong class="text-slate-200 font-normal">${formatK(primary.tokens.input)}</strong></span>
+                  <span class="mx-1 text-slate-600">·</span>
+                  <span>Out <strong class="text-slate-200 font-normal">${formatK(primary.tokens.output)}</strong></span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span>⏱ <span id="hud-primary-duration" class="text-slate-200">${formatDuration(primary.runtime.startedAt)}</span></span>
+                  <span class="text-[10px] text-slate-500">${hudState.mode === 'expanded' ? '▲' : '▼'}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- EXPANDED 详情手风琴抽屉 -->
+            ${hudState.mode === 'expanded' ? `
+              <div class="pt-2.5 mt-2 border-t border-white/10 space-y-1.5 font-mono-tabular text-[11px]">
+                <div class="flex justify-between">
+                  <span class="text-slate-400">Model</span>
+                  <span class="text-slate-200">${primary.model.name}</span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-slate-400">Exact Tokens</span>
+                  <span class="text-slate-200">${primary.tokens.input.toLocaleString()} in / ${primary.tokens.output.toLocaleString()} out</span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-slate-400">Cache Hit</span>
+                  <span class="text-emerald-400">${primary.tokens.cached.toLocaleString()} (${cachePct}% cached)</span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-slate-400">Git Working Tree</span>
+                  <span>
+                    <span class="text-slate-200">${primary.project.dirtyFiles} files</span>
+                    <span class="text-emerald-400 ml-1">+${primary.project.addedLines}</span>
+                    <span class="text-rose-400 ml-0.5">-${primary.project.deletedLines}</span>
+                  </span>
+                </div>
+                <div class="flex justify-between items-center">
+                  <span class="text-slate-400 shrink-0">Workspace</span>
+                  <span class="text-slate-300 truncate max-w-[215px]" title="${repoPathText}">${repoPathText}</span>
+                </div>
+              </div>
+            ` : ''}
+          </div>
+
+          <!-- 多 Session 并发堆叠区 (Secondary Sessions Stack) -->
+          ${secondaries.length > 0 ? `
+            <div class="border-t border-white/10 bg-[#06080c]/80 divide-y divide-white/[0.05]">
+              ${secondaries.map(sec => {
+                const sMeta = STATE_META[sec.runtime.state] || STATE_META.IDLE;
+                const sPct = Math.min(100, Math.round((sec.context.used / sec.context.limit) * 100));
+                const rowHighlight = sec.runtime.state === 'WAITING_USER'
+                  ? 'bg-amber-500/10 hover:bg-amber-500/20'
+                  : (sec.runtime.state === 'ERROR' ? 'bg-rose-500/10 hover:bg-rose-500/20' : 'hover:bg-white/[0.05]');
+                return `
+                  <div onclick="promoteSession('${sec.id}')" class="px-3.5 py-2 flex items-center justify-between cursor-pointer transition ${rowHighlight}">
+                    <div class="flex items-center gap-2 min-w-0">
+                      <span class="w-2 h-2 rounded-full shrink-0 ${sMeta.dot}"></span>
+                      <span class="font-mono-tabular text-[10px] px-1 py-0.2 rounded bg-white/10 text-slate-300 shrink-0">${sec.agent.short}·${sec.environment.label}</span>
+                      <span class="text-slate-200 font-medium truncate max-w-[115px]">${sec.project.name}</span>
+                    </div>
+                    <div class="flex items-center gap-2.5 font-mono-tabular text-[11px] shrink-0">
+                      <span class="${sMeta.text} text-[10px]">${sMeta.label}</span>
+                      <span class="text-slate-400 w-8 text-right">${sPct}%</span>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          ` : ''}
+        </div>
+      `;
+
+      updateSimulatorButtons();
+    }
+
+    // ==================== 4. SVG requestAnimationFrame 动画引擎 (遵循 PRD 第 7、18 节) ====================
+    let animFrameId = null;
+    function startAnimationLoop() {
+      function step(timestamp) {
+        const primary = getSortedSessions()[0];
+        const p1 = document.getElementById('svg-particle-1');
+        const p2 = document.getElementById('svg-particle-2');
+        const ring = document.getElementById('svg-center-ring');
+        const fpsEl = document.getElementById('perf-fps');
+        const fpsDot = document.getElementById('perf-fps-dot');
+        const cpuEl = document.getElementById('perf-cpu');
+
+        const isIdleOrHidden = !primary || !hudState.visible || primary.runtime.state === 'IDLE' || hudState.settings.reducedMotion || hudState.mode === 'compact';
+
+        if (isIdleOrHidden) {
+          // 严格遵循 PRD：Idle 状态或 Reduced Motion 下 0 FPS 停止渲染刷新
+          if (fpsEl) fpsEl.textContent = '0 FPS (Idle)';
+          if (fpsDot) fpsDot.className = 'w-2 h-2 rounded-full bg-slate-500';
+          if (cpuEl) cpuEl.textContent = '0.1%';
+          if (p1) { p1.setAttribute('cx', '70'); p1.setAttribute('opacity', '0.4'); }
+          if (p2) { p2.setAttribute('opacity', '0'); }
+        } else {
+          if (fpsEl) fpsEl.textContent = '60 FPS';
+          if (fpsDot) fpsDot.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse';
+          if (cpuEl) cpuEl.textContent = '0.4%';
+
+          const state = primary.runtime.state;
+          if (p1 && ring) {
+            if (state === 'THINKING' || state === 'WAITING_USER') {
+              // 中心轻微呼吸动画
+              const scale = 1 + 0.35 * Math.sin(timestamp / 240);
+              p1.setAttribute('cx', '70');
+              p1.setAttribute('r', (3.2 * scale).toFixed(2));
+              p1.setAttribute('opacity', '0.95');
+              ring.setAttribute('r', (4.5 * scale).toFixed(2));
+              if (p2) p2.setAttribute('opacity', '0');
+            } else if (state === 'TOOL_RUNNING') {
+              // 粒子从左向右沿轨道移动 (Agent -> Tool)
+              const progress = (timestamp % 1100) / 1100;
+              const x1 = 12 + progress * 116;
+              const x2 = 12 + ((progress + 0.5) % 1) * 116;
+              p1.setAttribute('cx', x1.toFixed(1));
+              p1.setAttribute('r', '3.5');
+              p1.setAttribute('opacity', '1');
+              if (p2) {
+                p2.setAttribute('cx', x2.toFixed(1));
+                p2.setAttribute('opacity', '0.75');
+              }
+            } else if (state === 'RESPONDING') {
+              // 粒子从右向左流式返回 (Model -> Agent)
+              const progress = 1 - ((timestamp % 1000) / 1000);
+              const x1 = 12 + progress * 116;
+              const x2 = 12 + ((progress + 0.5) % 1) * 116;
+              p1.setAttribute('cx', x1.toFixed(1));
+              p1.setAttribute('r', '3.2');
+              p1.setAttribute('opacity', '1');
+              if (p2) {
+                p2.setAttribute('cx', x2.toFixed(1));
+                p2.setAttribute('opacity', '0.8');
+              }
+            } else if (state === 'ERROR') {
+              p1.setAttribute('cx', '70');
+              p1.setAttribute('fill', '#ef4444');
+              if (p2) p2.setAttribute('opacity', '0');
+            }
+          }
+        }
+        animFrameId = requestAnimationFrame(step);
+      }
+      animFrameId = requestAnimationFrame(step);
+    }
+
+    // 每秒更新一次 Duration 计时器
+    setInterval(() => {
+      const durEl = document.getElementById('hud-primary-duration');
+      const primary = getSortedSessions()[0];
+      if (durEl && primary && primary.runtime.state !== 'IDLE') {
+        durEl.textContent = formatDuration(primary.runtime.startedAt);
+      }
+    }, 1000);
+
+    // ==================== 5. 模拟器控制台交互函数 ====================
+    function renderSimulatorSessionList() {
+      const listEl = document.getElementById('simulator-session-list');
+      const targetLabel = document.getElementById('current-target-label');
+      const target = sessions.find(s => s.id === hudState.selectedSimSessionId) || sessions[0];
+      if (target && targetLabel) {
+        targetLabel.textContent = `${target.project.name} [${target.environment.label}]`;
+      }
+
+      listEl.innerHTML = sessions.map(s => {
+        const isSelected = s.id === hudState.selectedSimSessionId;
+        const isPrimary = s.id === hudState.primarySessionId;
+        const meta = STATE_META[s.runtime.state] || STATE_META.IDLE;
+        return `
+          <div onclick="selectSimSession('${s.id}')"
+               class="px-3 py-2 rounded-lg border cursor-pointer transition flex items-center justify-between text-xs ${
+                 isSelected ? 'bg-sky-500/15 border-sky-500/40 text-white' : 'bg-white/[0.03] border-white/5 text-slate-300 hover:bg-white/[0.06]'
+               }">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="w-2 h-2 rounded-full ${meta.dot}"></span>
+              <span class="font-mono-tabular text-[10px] px-1.5 py-0.5 rounded bg-white/10">${s.agent.short}·${s.environment.label}</span>
+              <span class="font-medium truncate">${s.project.name}</span>
+              ${isPrimary ? `<span class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-mono-tabular">Primary</span>` : ''}
+            </div>
+            <span class="font-mono-tabular text-[10px] ${meta.text}">${meta.label}</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function selectSimSession(id) {
+      hudState.selectedSimSessionId = id;
+      const s = sessions.find(item => item.id === id);
+      if (s) {
+        const pct = Math.round((s.context.used / s.context.limit) * 100);
+        document.getElementById('context-slider').value = pct;
+        document.getElementById('context-slider-val').textContent = `${pct}% (${formatK(s.context.used)} / ${formatK(s.context.limit)})`;
+        document.getElementById('chk-estimated').checked = s.context.estimated;
+      }
+      renderSimulatorSessionList();
+    }
+
+    function triggerEvent(eventType) {
+      const target = sessions.find(s => s.id === hudState.selectedSimSessionId);
+      if (!target) return;
+
+      if (eventType === 'ENDED') {
+        sessions = sessions.filter(s => s.id !== target.id);
+        if (sessions.length > 0) {
+          hudState.primarySessionId = sessions[0].id;
+          hudState.selectedSimSessionId = sessions[0].id;
+        }
+        renderSimulatorSessionList();
+        renderHUD();
+        return;
+      }
+
+      target.runtime.updatedAt = Date.now();
+      if (eventType === 'THINKING') {
+        target.runtime.state = 'THINKING';
+        target.runtime.tool = 'Model';
+        target.runtime.detail = 'Reasoning on implementation steps...';
+      } else if (eventType === 'TOOL_BASH') {
+        target.runtime.state = 'TOOL_RUNNING';
+        target.runtime.tool = 'Bash';
+        target.runtime.detail = 'cargo test --workspace --nocapture';
+      } else if (eventType === 'TOOL_READ') {
+        target.runtime.state = 'TOOL_RUNNING';
+        target.runtime.tool = 'Edit';
+        target.runtime.detail = 'src/observer/session_registry.rs (+42 -8)';
+        target.project.dirtyFiles += 1;
+      } else if (eventType === 'RESPONDING') {
+        target.runtime.state = 'RESPONDING';
+        target.runtime.tool = 'Stream';
+        target.runtime.detail = 'Streaming response tokens...';
+        target.tokens.output += 420;
+      } else if (eventType === 'WAITING_USER') {
+        target.runtime.state = 'WAITING_USER';
+        target.runtime.tool = 'Approval';
+        target.runtime.detail = 'Allow Bash: rm -rf ./dist && npm run build ?';
+      } else if (eventType === 'ERROR') {
+        target.runtime.state = 'ERROR';
+        target.runtime.tool = 'Error';
+        target.runtime.detail = 'Exit code 1: Test suite failed at auth.spec.ts';
+      } else if (eventType === 'IDLE') {
+        target.runtime.state = 'IDLE';
+        target.runtime.tool = '-';
+        target.runtime.detail = 'Waiting for user prompt';
+      }
+
+      // 如果没有被手动 Pin 锁定，则最近产生 Activity 的 Session 自动成为 Primary (PRD 第 12 节)
+      if (!hudState.pinnedSessionId && eventType !== 'IDLE') {
+        hudState.primarySessionId = target.id;
+      }
+      // 当产生 Activity 时若处于 Compact 则自动展开为 Active (PRD 第 13 节)
+      if (hudState.mode === 'compact' && eventType !== 'IDLE') {
+        hudState.mode = 'active';
+      }
+
+      renderSimulatorSessionList();
+      renderHUD();
+    }
+
+    function updateContextUsage(pctVal) {
+      const target = sessions.find(s => s.id === hudState.selectedSimSessionId);
+      if (!target) return;
+      const pct = parseInt(pctVal, 10);
+      target.context.used = Math.round((pct / 100) * target.context.limit);
+      target.tokens.input = target.context.used;
+      document.getElementById('context-slider-val').textContent = `${pct}% (${formatK(target.context.used)} / ${formatK(target.context.limit)})`;
+      renderHUD();
+    }
+
+    function toggleSetting(key, val) {
+      if (key === 'estimated') {
+        const target = sessions.find(s => s.id === hudState.selectedSimSessionId);
+        if (target) target.context.estimated = val;
+      } else {
+        hudState.settings[key] = val;
+      }
+      renderHUD();
+    }
+
+    function updateOpacity(val) {
+      document.getElementById('opacity-val').textContent = `${val}%`;
+      document.documentElement.style.setProperty('--hud-opacity', (val / 100).toFixed(2));
+    }
+
+    function setHudMode(mode) {
+      hudState.mode = mode;
+      renderHUD();
+    }
+
+    function updateSimulatorButtons() {
+      ['compact', 'active', 'expanded'].forEach(m => {
+        const btn = document.getElementById(`btn-mode-${m}`);
+        if (!btn) return;
+        if (hudState.mode === m) {
+          btn.className = 'py-1.5 text-xs font-semibold rounded-md bg-sky-500 text-slate-950 shadow transition';
+        } else {
+          btn.className = 'py-1.5 text-xs font-medium rounded-md text-slate-400 hover:text-white transition';
+        }
+      });
+    }
+
+    function promoteSession(id) {
+      hudState.primarySessionId = id;
+      hudState.selectedSimSessionId = id;
+      renderSimulatorSessionList();
+      renderHUD();
+    }
+
+    function togglePin(event, id) {
+      event.stopPropagation();
+      hudState.pinnedSessionId = hudState.pinnedSessionId === id ? null : id;
+      renderHUD();
+    }
+
+    function wakeTerminal(event, id) {
+      event.stopPropagation();
+      const termEl = document.getElementById(`term-${id}`) || document.getElementById('term-s1');
+      if (termEl) {
+        termEl.classList.remove('term-active-flash');
+        void termEl.offsetWidth; // 触发重绘
+        termEl.classList.add('term-active-flash');
+      }
+    }
+
+    function addNewSession() {
+      const idx = sessions.length + 1;
+      const isClaude = idx % 2 === 1;
+      const isWsl = idx % 3 !== 0;
+      const newId = 's' + Date.now().toString().slice(-4);
+      sessions.push({
+        id: newId,
+        agent: isClaude
+          ? { type: 'claude', name: 'Claude Code', short: 'CC', color: '#D97757' }
+          : { type: 'codex', name: 'Codex', short: 'CX', color: '#10A37F' },
+        environment: isWsl
+          ? { type: 'wsl', label: 'WSL', distro: 'Ubuntu-24.04' }
+          : { type: 'windows', label: 'Win' },
+        project: {
+          name: `microservice-node-${idx}`,
+          cwd: isWsl ? `/home/jiayang/repos/microservice-node-${idx}` : `C:\\Projects\\microservice-node-${idx}`,
+          branch: 'feat/agent-adapter',
+          dirtyFiles: 3,
+          addedLines: 64,
+          deletedLines: 19
+        },
+        runtime: {
+          state: 'THINKING',
+          tool: 'Model',
+          detail: 'Initializing new agent session...',
+          startedAt: Date.now(),
+          updatedAt: Date.now()
+        },
+        model: { name: isClaude ? 'Claude 3.7 Sonnet' : 'GPT-5.6 Codex' },
+        context: { used: 28000, limit: isClaude ? 200000 : 128000, estimated: false },
+        tokens: { input: 28000, output: 1900, cached: 12000 }
+      });
+      if (!hudState.pinnedSessionId) hudState.primarySessionId = newId;
+      hudState.selectedSimSessionId = newId;
+      hudState.visible = true;
+      renderSimulatorSessionList();
+      renderHUD();
+    }
+
+    function toggleHudVisibility() {
+      hudState.visible = !hudState.visible;
+      renderHUD();
+    }
+
+    // ==================== 6. 拖拽与点击判定逻辑 ====================
+    let isDragging = false;
+    let dragMoved = false;
+    let dragOffsetX = 0;
+    let dragOffsetY = 0;
+
+    function startDrag(e) {
+      if (e.button !== 0) return;
+      const hud = document.getElementById('hud-container');
+      const rect = hud.getBoundingClientRect();
+      isDragging = true;
+      dragMoved = false;
+      dragOffsetX = e.clientX - rect.left;
+      dragOffsetY = e.clientY - rect.top;
+      hud.style.transition = 'none';
+    }
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      dragMoved = true;
+      const hud = document.getElementById('hud-container');
+      let newLeft = e.clientX - dragOffsetX;
+      let newTop = e.clientY - dragOffsetY;
+
+      // 边界限制与右边缘磁吸 (距离右边缘 < 24px 自动磁吸)
+      const maxLeft = window.innerWidth - hud.offsetWidth - 12;
+      if (Math.abs(newLeft - maxLeft) < 24) {
+        newLeft = maxLeft;
+      }
+      newLeft = Math.max(380, Math.min(newLeft, maxLeft));
+      newTop = Math.max(12, Math.min(newTop, window.innerHeight - hud.offsetHeight - 48));
+
+      hud.style.left = `${newLeft}px`;
+      hud.style.top = `${newTop}px`;
+      hud.style.right = 'auto';
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+      }
+    });
+
+    function handleCardClick(e, targetMode) {
+      if (dragMoved) {
+        dragMoved = false;
+        return;
+      }
+      if (targetMode) {
+        hudState.mode = targetMode;
+      } else {
+        hudState.mode = hudState.mode === 'expanded' ? 'active' : 'expanded';
+      }
+      renderHUD();
+    }
+
+    function resetHudPosition() {
+      const hud = document.getElementById('hud-container');
+      hud.style.left = 'auto';
+      hud.style.top = '68px';
+      hud.style.right = '28px';
+    }
+
+    // 按住 Alt 键临时解除 Ghost Mode 鼠标穿透
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Alt' && hudState.settings.ghostMode) {
+        document.querySelector('.hud-glass')?.classList.remove('hud-ghost-mode');
+      }
+    });
+    window.addEventListener('keyup', (e) => {
+      if (e.key === 'Alt' && hudState.settings.ghostMode) {
+        renderHUD();
+      }
+    });
+
+    // 初始化启动
+    renderSimulatorSessionList();
+    renderHUD();
+    startAnimationLoop();
+  </script>
+</body>
+</html>

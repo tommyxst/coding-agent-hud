@@ -1,0 +1,37 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Coding Agent HUD",
+  "version": "0.1.0",
+  "identifier": "dev.tommyxst.coding-agent-hud",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [{
+      "label": "hud",
+      "title": "Coding Agent HUD",
+      "width": 372,
+      "height": 320,
+      "minWidth": 280,
+      "minHeight": 30,
+      "x": 40,
+      "y": 80,
+      "transparent": true,
+      "decorations": false,
+      "alwaysOnTop": true,
+      "skipTaskbar": true,
+      "focus": false,
+      "focusable": false,
+      "visible": false,
+      "resizable": false,
+      "shadow": false
+    }],
+    "security": {
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; frame-src 'none'"
+    }
+  },
+  "bundle": { "active": false }
+}

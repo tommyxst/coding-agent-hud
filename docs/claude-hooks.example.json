@@ -1,0 +1,13 @@
+{
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "\"<ABSOLUTE_PATH_TO_AGENT_HUD_HOOK_EXE>\"", "timeout": 5 }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "\"<ABSOLUTE_PATH_TO_AGENT_HUD_HOOK_EXE>\"", "timeout": 5 }] }],
+    "PreToolUse": [{ "matcher": ".*", "hooks": [{ "type": "command", "command": "\"<ABSOLUTE_PATH_TO_AGENT_HUD_HOOK_EXE>\"", "timeout": 5 }] }],
+    "PostToolUse": [{ "matcher": ".*", "hooks": [{ "type": "command", "command": "\"<ABSOLUTE_PATH_TO_AGENT_HUD_HOOK_EXE>\"", "timeout": 5 }] }],
+    "PostToolUseFailure": [{ "matcher": ".*", "hooks": [{ "type": "command", "command": "\"<ABSOLUTE_PATH_TO_AGENT_HUD_HOOK_EXE>\"", "timeout": 5 }] }],
+    "PermissionRequest": [{ "matcher": ".*", "hooks": [{ "type": "command", "command": "\"<ABSOLUTE_PATH_TO_AGENT_HUD_HOOK_EXE>\"", "timeout": 5 }] }],
+    "Notification": [{ "matcher": "permission_prompt|idle_prompt", "hooks": [{ "type": "command", "command": "\"<ABSOLUTE_PATH_TO_AGENT_HUD_HOOK_EXE>\"", "timeout": 5 }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "\"<ABSOLUTE_PATH_TO_AGENT_HUD_HOOK_EXE>\"", "timeout": 5 }] }],
+    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "\"<ABSOLUTE_PATH_TO_AGENT_HUD_HOOK_EXE>\"", "timeout": 5 }] }]
+  }
+}

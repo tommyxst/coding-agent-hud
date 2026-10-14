@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "hud",
+  "description": "Local HUD events and user-initiated dragging only",
+  "windows": ["hud"],
+  "permissions": ["core:event:default", "core:window:allow-start-dragging"]
+}
