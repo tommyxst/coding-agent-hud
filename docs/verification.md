@@ -26,7 +26,7 @@
 
 ## 构建输出
 
-- `src-tauri/target/release/coding-agent-hud.exe`：9,333,248 字节。
+- `src-tauri/target/release/coding-agent-hud.exe`：9,332,224 字节。
 - `src-tauri/target/release/agent-hud-hook.exe`：359,424 字节。
 - 可执行文件留在本地构建目录，不上传到 Git 仓库；未发布 GitHub Release。
 - 合成数据预览见 `docs/screenshots/hud-preview.png`，图中 DEMO 不代表真实采集。
