@@ -161,7 +161,7 @@ fn collect(app: &AppHandle, shared: &Shared) -> Result<(), String> {
                 Ok((time, path))
             })
             .collect::<Result<Vec<_>, String>>()?;
-        dated.sort_by(|a, b| b.0.cmp(&a.0));
+        dated.sort_by_key(|candidate| std::cmp::Reverse(candidate.0));
         for (_, path) in dated.into_iter().take(limit) {
             if let Err(error) = rollout(&path, shared, &tx, &mut tracked, &mut observed) {
                 status(shared, "codex", "error", error)?;
