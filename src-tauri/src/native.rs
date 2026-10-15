@@ -29,10 +29,10 @@ use windows_sys::Win32::{
         WindowsAndMessaging::{
             CallNextHookEx, EnumWindows, GetMessageW, GetWindowLongPtrW, GetWindowThreadProcessId,
             IsWindowVisible, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos,
-            SetWindowsHookExW, ShowWindow, UnhookWindowsHookEx, GWL_EXSTYLE, KBDLLHOOKSTRUCT, MSG,
-            SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SW_RESTORE,
-            WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP, WS_EX_APPWINDOW,
-            WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+            SetWindowsHookExW, ShowWindow, UnhookWindowsHookEx, GWL_EXSTYLE, HWND_TOP,
+            KBDLLHOOKSTRUCT, MSG, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+            SWP_NOZORDER, SW_RESTORE, SW_SHOWNOACTIVATE, WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP,
+            WM_SYSKEYDOWN, WM_SYSKEYUP, WS_EX_APPWINDOW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
         },
     },
 };
@@ -74,6 +74,30 @@ pub(crate) fn configure_hud_window(window: HWND) -> Result<(), String> {
         {
             return Err(format!(
                 "apply HUD window style: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn reveal_hud_window(window: HWND) -> Result<(), String> {
+    configure_hud_window(window)?;
+    unsafe {
+        // show() can be a cached no-op; restore and raise only on an explicit reveal request.
+        ShowWindow(window, SW_SHOWNOACTIVATE);
+        if SetWindowPos(
+            window,
+            HWND_TOP,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE,
+        ) == 0
+        {
+            return Err(format!(
+                "reveal HUD window: {}",
                 std::io::Error::last_os_error()
             ));
         }

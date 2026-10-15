@@ -1,7 +1,7 @@
 /* Design contract: local-first attention telemetry, not a dashboard.
    Graphite acrylic; brand accents identify agents; amber/coral are actionable states.
    4px/8px spacing rhythm; local system fonts; 12px/16px surface radii.
-   Only transform/opacity state motion. No decorative loops, layout animation or CDN assets.
+   Only transform/opacity state motion. No permanent frame loop, layout animation or CDN assets.
    Unknown stays unknown; private commands and paths never appear in hidden tooltips. */
 :root {
   font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
@@ -76,16 +76,14 @@ svg { flex-shrink: 0; vertical-align: middle; }
 .dirty-count { color: var(--waiting); flex-shrink: 0; }
 .dirty-count svg { color: var(--done); }
 .pipeline { display: block; border: 1px solid rgba(255,255,255,0.045); border-radius: 8px; background: rgba(0,0,0,0.17); padding: 8px; margin-bottom: 8px; }
-.pipeline-row { display: grid; grid-template-columns: auto minmax(32px,1fr) minmax(0,auto); align-items: center; gap: 8px; }
+/* Fixed target column keeps the track origin stable when tool/state labels change. */
+.pipeline-row { display: grid; grid-template-columns: auto minmax(32px,1fr) 5em; align-items: center; gap: 8px; }
 .pipeline-node { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; color: #c0c9d5; padding: 2px 5px; background: rgba(255,255,255,0.035); border: 1px solid var(--line); border-radius: 4px; }
-.pipeline-target { max-width: 110px; overflow-wrap: anywhere; }
+.pipeline-target { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pipeline-track { height: 20px; position: relative; min-width: 0; }
 .track-line { height: 1px; position: absolute; left: 0; right: 0; top: 50%; background: repeating-linear-gradient(to right, #475160 0, #475160 3px, transparent 3px, transparent 6px); opacity: 0.65; }
 .track-anchor { position: absolute; width: 9px; height: 9px; border-radius: 50%; border: 1px solid #4c5666; left: calc(50% - 4.5px); top: calc(50% - 4.5px); }
 .track-particle { position: absolute; width: 5px; height: 5px; background: var(--agent); border-radius: 50%; left: calc(50% - 2.5px); top: calc(50% - 2.5px); }
-.pipeline-thinking .track-particle { animation: thinking 2600ms cubic-bezier(0.45,0,0.55,1) infinite; }
-.pipeline-tool_running .track-particle { animation: outbound 1700ms cubic-bezier(0.45,0,0.55,1) infinite; }
-.pipeline-responding .track-particle { animation: inbound 1700ms cubic-bezier(0.45,0,0.55,1) infinite; }
 .pipeline-idle .track-particle { background: #687585; }
 .action-row { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: start; gap: 8px; margin-top: 4px; }
 .action-summary { font-size: 10px; color: #b7c0cc; overflow-wrap: anywhere; }
@@ -221,9 +219,6 @@ select { width: 100%; min-width: 0; padding: 5px 4px; color: #ccd5e1; background
   .secondary-row:hover, .return-action:hover:not(:disabled), .demo-controls button:hover:not(:disabled) { background: rgba(255,255,255,0.08); }
   .primary-summary:hover .project-name { color: #fff; }
 }
-@keyframes thinking { 0%,100% { opacity: 0.6; transform: scale(1); } 50% { opacity: 1; transform: scale(1.45); } }
-@keyframes outbound { 0% { transform: translateX(-32px); opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } 100% { transform: translateX(32px); opacity: 0; } }
-@keyframes inbound { 0% { transform: translateX(32px); opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } 100% { transform: translateX(-32px); opacity: 0; } }
 .detail-drawer, .utility-panel { transition: transform 220ms var(--ease-enter), opacity 180ms var(--ease-enter); transform-origin: top center; }
 .secondary-row { transition: background-color 120ms var(--ease-enter), transform 180ms var(--ease-enter), opacity 180ms var(--ease-enter); }
 @starting-style {
@@ -243,3 +238,44 @@ html[data-hidden=true] * { animation-play-state: paused !important; }
   .context-mini svg { display: none; }
   .demo-controls { width: calc(100% - 16px); }
 }
+
+/* Typography follows the user's font setting; dimensions grow with readable text. */
+:root { --hud-font-size: 15px; }
+body { font-size: var(--hud-font-size); line-height: 1.5; }
+.app-native, .app-demo, .boot-state {
+  --font-small: calc(var(--hud-font-size) - 1px);
+  --font-body: var(--hud-font-size);
+  --font-title: calc(var(--hud-font-size) + 2px);
+  font-size: var(--font-body);
+}
+.agent-name, .action-summary, .attention-banner p, .return-action,
+.secondary-project, .compact-project, .empty-card strong, h2,
+.setting-toggle, .setting-slider, .setting-select, .collector-title strong,
+.issue-notice > div, .demo-controls header strong { font-size: var(--font-body); }
+.environment, .git-badge, .pipeline-node, .activity-label, .context-heading,
+.telemetry-footer, .detail-toggle, .detail-hint, .detail-grid > div, .detail-note,
+.attention-title, .secondary-agent, .secondary-status, .context-mini,
+.compact-agent, .compact-status, .hud-utility, .auto-button, .empty-card p,
+.panel-description, .group-label, .setting-toggle small, .settings-footer,
+.text-button, .collector-state, .collector-list p, .collector-empty,
+.issue-notice p, .success-notice, .demo-mark, .demo-badge, .demo-controls,
+.demo-controls header > span:last-child, select, .demo-controls button { font-size: var(--font-small); }
+.project-name, .boot-state h1 { font-size: var(--font-title); }
+.hud-shell { width: calc(var(--hud-font-size) * 26.4); }
+.app-native .hud-shell.is-compact { width: calc(var(--hud-font-size) * 25.6); }
+.app-demo .window-content { width: min(100%, calc(var(--hud-font-size) * 26.4 + 24px)); }
+.demo-controls { width: min(100%, calc(var(--hud-font-size) * 26.4)); }
+.secondary-row { grid-template-columns: 6px auto minmax(0,1fr) auto auto; }
+.secondary-status { max-width: 7em; overflow-wrap: anywhere; }
+.compact-agent { white-space: nowrap; }
+.telemetry-footer, .settings-footer, .demo-options { flex-wrap: wrap; }
+.detail-grid > div { grid-template-columns: minmax(0,0.4fr) minmax(0,0.6fr); }
+.detail-grid dt { overflow-wrap: anywhere; }
+.icon-button { width: 28px; height: 28px; }
+.recent-tools { display: flex; flex-wrap: wrap; gap: 4px 8px; margin-top: 6px; font-size: var(--font-small); color: var(--muted); }
+.recent-tool { overflow-wrap: anywhere; }
+.demo-modes button { min-width: 0; overflow-wrap: anywhere; }
+.drag-handle { flex-shrink: 0; cursor: grab; touch-action: none; }
+.drag-handle:active:not(:disabled) { cursor: grabbing; transform: none; }
+.hud-header .agent-identity { flex: 1; cursor: default; }
+.compact-agent .compact-env { display: none; }

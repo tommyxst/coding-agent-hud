@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createDemoSnapshot } from '../src/demo';
 import { DEFAULT_SETTINGS } from '../src/model';
 import type { AgentSession } from '../src/model';
-import { automaticMode, contextReading, displayedAttention, expireDone, formatContextPercent, formatCount, modeKey, needsInteraction, nextDoneDelay, primarySession, rankSessions, reconcileDone, reconcileSelection, selectSession, togglePin } from '../src/state';
+import { automaticMode, contextReading, displayedAttention, expireDone, formatContextPercent, formatCount, resolveMode, needsInteraction, nextDoneDelay, primarySession, rankSessions, reconcileDone, reconcileSelection, selectSession, togglePin } from '../src/state';
 
 const auto = { selectedId: null, pinnedId: null };
 const fixture = () => createDemoSnapshot(200000).sessions;
@@ -69,7 +69,7 @@ describe('Done lifecycle and mode transitions', () => {
     expect(automaticMode(session, before)).toBe('attention');
     expect(automaticMode(session, after)).toBe('compact');
     expect(displayedAttention(session, after)).toBe('NONE');
-    expect(modeKey(session, before)).not.toBe(modeKey(session, after));
+    expect(resolveMode(session, after, null)).toBe('compact');
   });
   it('does not restart Done time for new snapshots with a changed runtime timestamp', () => {
     const session = attention(fixture()[0], 'DONE');
@@ -129,5 +129,21 @@ describe('Context and unknown telemetry', () => {
     expect(formatCount(undefined)).toBe('—');
     expect(formatCount(0)).toBe('0');
     expect(formatCount(72431, true)).toBe('72,431');
+  });
+});
+
+describe('manual view is scoped to the session, not its changing activity', () => {
+  it.each(['STARTING', 'IDLE', 'THINKING', 'TOOL_RUNNING', 'RESPONDING'] as const)('keeps details open through %s', state => {
+    const session = fixture()[0];
+    session.runtime.state = state;
+    expect(resolveMode(session, {}, { key: session.id, mode: 'expanded' })).toBe('expanded');
+  });
+  it.each(['WAITING_USER', 'ERROR', 'DONE'] as const)('does not hide %s behind a manual compact choice', state => {
+    const session = attention(fixture()[0], state);
+    expect(resolveMode(session, {}, { key: session.id, mode: 'compact' })).toBe('attention');
+    expect(resolveMode(session, {}, { key: session.id, mode: 'expanded' })).toBe('expanded');
+  });
+  it('does not apply another session’s manual view', () => {
+    expect(resolveMode(fixture()[0], {}, { key: 'other', mode: 'expanded' })).toBe('active');
   });
 });

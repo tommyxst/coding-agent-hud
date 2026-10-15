@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "task": "hud-show-desktop-recovery",
+  "status": "ready",
+  "goal": "修复取消置顶后 Win+D / 最小化导致 HUD 不可见且图标无法恢复的问题；保留非激活、置顶设置与既有交互策略。",
+  "criteria": [
+    "托盘入口可恢复系统收起的 HUD，不抢键盘焦点、不强制重新置顶",
+    "新增最小化/隐藏/交互状态回归与隔离原生验证",
+    "gpt-6-astra 或 grok-4.7 只读评审，具体发现修正复测",
+    "更新相关用法与验证边界，Windows Release 构建通过"
+  ],
+  "scope": [
+    "src-tauri/src/",
+    "scripts/",
+    "README.md",
+    "docs/",
+    "STATE.json"
+  ],
+  "constraints": [
+    "保留 fix/m1-acceptance 上所有已有改动及原始用户资料",
+    "不暂存、提交、推送或合并",
+    "不启动真实 Agent 或触发模型调用，不修改 Claude/Codex 配置",
+    "不通过强制置顶或抢焦点规避恢复问题"
+  ],
+  "current": "修复取消置顶后 Win+D / 最小化导致 HUD 不可见且图标无法恢复的问题；保留非激活、置顶设置与既有交互策略。",
+  "next": [],
+  "blocked": [],
+  "followUp": null,
+  "change": "changes/active/hud-show-desktop-recovery",
+  "layer": "docs",
+  "verification": {
+    "evidence": "旧 Release 在新增隔离回归中失败于 tray restores Minimize；新 Release 13 组真实 IPC/Win32 fixture 检查通过，最小化/隐藏/低层级和无会话窗口均可经真实托盘处理路径恢复，foreground HWND 和未置顶状态保持，后台快照不解除最小化。Rust fmt、strict Clippy、30 项测试通过；npm run desktop:build 成功，包含 TypeScript/前端构建。初始化 smoke 最终通过，HUD 未拥有前台、前台 HWND 相同。gpt-6-astra 只读评审无生产阻塞，两项测试意见已处理。未做全桌面 Win+D 或物理托盘/菜单点击，明确不冒充实机按键验收。记录及 exe SHA-256 见 docs/window-recovery-verification.md。",
+    "diffReview": "git diff --check 与空暂存区检查通过；依赖/Cargo 与 npm 锁文件、PRD、UI&UX 未改；保留本分支上一轮全部修改；本轮无提交/推送/合并，无 Claude/Codex 配置更改或真实 Agent 启动。",
+    "intentHash": "67498d8c01bd82284f1490d9bbee13b31ed3165792f05aa52f5719c55aabc0d0",
+    "fingerprints": {
+      "src-tauri/src/app.rs": "e3b7cb83b19dffd2607fa6fad0e4069aa33405d40d14c1b710353b5f6c593da7",
+      "src-tauri/src/native.rs": "e5cf4fac943dfb395de9e4b7638530502cfb659474a52ade0b29614073b49168",
+      "scripts/read-window-state.ps1": "b637d272b614a78b161aa585632cd51420fbd33e83ecaf2c551e4c1048be25d1",
+      "scripts/window-fixture-action.ps1": "c7abba412ff5e471b4c082d390adbb3ba30cd06de2c61737794ec6203f47d1a8",
+      "scripts/verify-native.cjs": "f7f23e490dd81a40fe4173cd1a00429255ba99473aa5ac8673a7b97cb999109e",
+      "scripts/verify-window.ps1": "28e43d1b8bf6be637855309ba958e6f61d153967315212e74f0590277c71975c",
+      "README.md": "4ca21e7a9b61d003fb6b8d8a87d0311cf8b379060fa4eac630c48bb4eb0b7dcc",
+      "docs/verification.md": "3f7ffe4d2e73bc8d41b08a4d6894ee74184f15d8dbcff303b6194749ae87d61b",
+      "docs/window-recovery-verification.md": "28b8dded5989567cf14f7bc5e8fac390413173bd85b6342bfc0cf1b4b55e71e6",
+      "AGENTS.md": "460992be8678bb959e5a822298a8bacbbdd4f102c92ac29c4ebd8d99e0c71429"
+    },
+    "at": "2026-10-15T04:27:41.658Z"
+  },
+  "gate": {
+    "decisions": {},
+    "summary": "README 已说明托盘单击始终显示/恢复、右键菜单退出交互、取消置顶后恢复仍不置顶以及后台不自动展开最小化窗口。docs/window-recovery-verification.md 记录根因、旧版失败/新版通过、gpt-6-astra 评审与测试意见处理、30 Rust/13 原生检查、Release SHA-256 与未物理 Win+D/菜单验收边界；docs/verification.md 保留上一轮并指向新记录。未改依赖、配置或原资料；上一轮修改与本轮修复均保持未提交。"
+  }
+}

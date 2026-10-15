@@ -1,4 +1,4 @@
-use crate::model::{Activity, AttentionState, Model, Session};
+use crate::model::{Activity, AttentionState, Model, Session, ToolStatus};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::PathBuf;
@@ -30,6 +30,7 @@ pub struct HookEvent {
     pub tool: Option<String>,
     pub model: Option<String>,
     pub notification_type: Option<String>,
+    pub tool_use_id: Option<String>,
 }
 
 impl HookEvent {
@@ -57,10 +58,27 @@ impl HookEvent {
             tool: v["tool_name"].as_str().map(str::to_owned),
             model: v["model"].as_str().map(str::to_owned),
             notification_type: v["notification_type"].as_str().map(str::to_owned),
+            tool_use_id: v["tool_use_id"].as_str().map(str::to_owned),
         })
     }
 
     pub fn apply(&self, s: &mut Session) -> bool {
+        if let Some(tool) = &self.tool {
+            let status = match self.kind {
+                HookKind::PreToolUse => Some(ToolStatus::Observed),
+                HookKind::PostToolUse => Some(ToolStatus::Returned),
+                HookKind::PostToolUseFailure => Some(ToolStatus::Failed),
+                _ => None,
+            };
+            if let Some(status) = status {
+                let id = self
+                    .tool_use_id
+                    .clone()
+                    .unwrap_or_else(|| format!("{:?}:{}:{tool}", self.kind, self.timestamp));
+                s.observe_tool(id, tool.clone(), status, self.timestamp);
+            }
+        }
+        // Late tool returns still update their observation, but cannot rewind runtime.
         if self.timestamp < s.runtime.updated_at {
             return false;
         }
@@ -159,6 +177,36 @@ mod tests {
         assert!(HookEvent::from_input(br#"{"hook_event_name":"SomethingElse"}"#, 1).is_err());
         assert!(
             HookEvent::from_input(br#"{"hook_event_name":"Stop","cwd":"C:/demo"}"#, 1).is_err()
+        );
+    }
+}
+
+#[cfg(test)]
+mod observation_tests {
+    use super::*;
+    #[test]
+    fn late_parallel_return_is_recorded_without_rewinding_current_activity() {
+        let mut session = Session::new("claude", "parallel", "C:/fixture", 0);
+        let mut event = HookEvent::from_input(br#"{"hook_event_name":"PreToolUse","session_id":"parallel","cwd":"C:/fixture","tool_name":"Read","tool_use_id":"a"}"#, 1).unwrap();
+        event.timestamp = 10;
+        event.apply(&mut session);
+        event.tool_use_id = Some("b".into());
+        event.timestamp = 21;
+        event.apply(&mut session);
+        event.tool_use_id = Some("a".into());
+        event.kind = HookKind::PostToolUse;
+        event.timestamp = 20;
+        event.apply(&mut session);
+        assert_eq!(session.runtime.updated_at, 21);
+        assert_eq!(session.runtime.state, Activity::ToolRunning);
+        assert_eq!(
+            session
+                .recent_tools
+                .iter()
+                .find(|tool| tool.id == "a")
+                .unwrap()
+                .status,
+            ToolStatus::Returned
         );
     }
 }

@@ -39,6 +39,7 @@ $info = New-Object System.Diagnostics.ProcessStartInfo
 $info.FileName = (Resolve-Path $AppPath).Path
 $info.EnvironmentVariables['CODEX_HOME'] = Join-Path $root 'codex'
 $info.EnvironmentVariables['HUD_EVENT_DIR'] = Join-Path $root 'events'
+$info.EnvironmentVariables['WEBVIEW2_USER_DATA_FOLDER'] = Join-Path $root 'webview-profile'
 $info.UseShellExecute = $false
 $info.CreateNoWindow = $true
 $info.RedirectStandardError = $true
@@ -54,20 +55,34 @@ try {
     } while ([DateTime]::UtcNow -lt $deadline)
     $ready = $window -ne [IntPtr]::Zero
     if (-not $ready) { throw 'HUD window was not found' }
-    Start-Sleep -Milliseconds 500
-    $style = [HudSmoke]::GetWindowLongPtr($window, -20).ToInt64()
+    # HWND creation precedes Tauri setup; wait for the isolated collector and configured styles.
+    do {
+        if ($process.HasExited) { throw "HUD exited: $($process.StandardError.ReadToEnd())" }
+        $style = [HudSmoke]::GetWindowLongPtr($window, -20).ToInt64()
+        $initialized = (Test-Path (Join-Path $root 'events')) -and [bool]($style -band 0x8) -and [bool]($style -band 0x80) -and [bool]($style -band 0x8000000)
+        if ($initialized) { break }
+        Start-Sleep -Milliseconds 50
+    } while ([DateTime]::UtcNow -lt $deadline)
+    $foreground = [HudSmoke]::GetForegroundWindow()
+    [uint32]$foregroundOwner = 0
+    [HudSmoke]::GetWindowThreadProcessId($foreground, [ref]$foregroundOwner) | Out-Null
     $result = [ordered]@{
         ready = $ready
+        initialized = $initialized
         pid = $process.Id
         hiddenWithoutSessions = -not [HudSmoke]::IsWindowVisible($window)
         topmost = [bool]($style -band 0x8)
         toolWindow = [bool]($style -band 0x80)
         noActivate = [bool]($style -band 0x8000000)
-        foregroundUnchanged = ([HudSmoke]::GetForegroundWindow() -eq $before)
+        foregroundUnchanged = ($foreground -eq $before)
+        foregroundBefore = $before.ToInt64().ToString('X')
+        foregroundAfter = $foreground.ToInt64().ToString('X')
+        foregroundOwnedByHud = ($foregroundOwner -eq $process.Id)
         style = ('0x{0:X}' -f $style)
     }
     $result | ConvertTo-Json
-    if (-not $result.hiddenWithoutSessions -or -not $result.topmost -or -not $result.toolWindow -or -not $result.noActivate -or -not $result.foregroundUnchanged) {
+    # Other apps may change foreground; reject HUD activation, not unrelated focus changes.
+    if (-not $result.initialized -or -not $result.hiddenWithoutSessions -or -not $result.topmost -or -not $result.toolWindow -or -not $result.noActivate -or $result.foregroundOwnedByHud) {
         throw 'Native smoke assertion failed'
     }
 } finally {

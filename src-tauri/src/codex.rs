@@ -1,4 +1,4 @@
-use crate::model::{Activity, AttentionState, Context, Model, Session, Tokens};
+use crate::model::{Activity, AttentionState, Context, Model, Session, Tokens, ToolStatus};
 use serde_json::Value;
 
 #[derive(Debug, PartialEq)]
@@ -37,6 +37,7 @@ pub fn apply(
         if timestamp < s.runtime.updated_at {
             return Ok(Update::Unchanged);
         }
+        observe_tool(s, kind, payload, timestamp);
         match kind {
             "turn_context" => {
                 s.model = Some(Model {
@@ -176,6 +177,66 @@ pub fn apply(
     } else {
         Update::Unchanged
     })
+}
+
+fn observe_tool(session: &mut Session, kind: &str, payload: &Value, timestamp: i64) {
+    let event = payload["type"].as_str().unwrap_or("");
+    let (value, name, status) = match (kind, event) {
+        ("response_item", "function_call" | "custom_tool_call") => {
+            (payload, string(payload, "name"), ToolStatus::Observed)
+        }
+        ("response_item", "function_call_output" | "custom_tool_call_output") => {
+            (payload, None, ToolStatus::Returned)
+        }
+        ("event_msg", "exec_command_begin") => (payload, Some("Bash".into()), ToolStatus::Observed),
+        ("event_msg", "mcp_tool_call_begin") => (payload, Some("MCP".into()), ToolStatus::Observed),
+        ("event_msg", "web_search_begin") => (payload, Some("Search".into()), ToolStatus::Observed),
+        ("event_msg", "patch_apply_begin") => (payload, Some("Edit".into()), ToolStatus::Observed),
+        ("event_msg", "exec_command_end") => (
+            payload,
+            Some("Bash".into()),
+            if payload["exit_code"].as_i64().is_some_and(|code| code != 0) {
+                ToolStatus::Failed
+            } else {
+                ToolStatus::Returned
+            },
+        ),
+        ("event_msg", "mcp_tool_call_end" | "web_search_end" | "patch_apply_end") => {
+            (payload, None, ToolStatus::Returned)
+        }
+        ("event_msg", "item_completed") => {
+            let item = &payload["item"];
+            let name = match item["type"].as_str() {
+                Some("CommandExecution") => "Bash",
+                Some("McpToolCall" | "DynamicToolCall") => "MCP",
+                Some("FileChange") => "Edit",
+                Some("WebSearch") => "Search",
+                _ => return,
+            };
+            let status = match item["status"].as_str() {
+                Some("failed" | "declined") => ToolStatus::Failed,
+                Some("completed") => ToolStatus::Returned,
+                _ => ToolStatus::Observed,
+            };
+            (item, Some(name.into()), status)
+        }
+        _ => return,
+    };
+    let id = string(value, "call_id").or_else(|| string(value, "id"));
+    let name = name
+        .or_else(|| {
+            id.as_ref().and_then(|id| {
+                session
+                    .recent_tools
+                    .iter()
+                    .find(|tool| &tool.id == id)
+                    .map(|tool| tool.name.clone())
+            })
+        })
+        .unwrap_or_else(|| "Tool".into());
+    // Without a call ID, begin/end cannot be correlated; retain separate observations.
+    let id = id.unwrap_or_else(|| format!("{event}:{timestamp}:{name}"));
+    session.observe_tool(id, name, status, timestamp);
 }
 
 fn completed_item(session: &mut Session, item: &Value, timestamp: i64) {
@@ -416,5 +477,48 @@ mod current_format_tests {
         apply(&mut session, &serde_json::to_vec(&record).unwrap(), false).unwrap();
         assert!(session.as_ref().unwrap().context.is_none());
         assert!(session.as_ref().unwrap().tokens.is_none());
+    }
+}
+
+#[cfg(test)]
+mod observation_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn a_short_tool_survives_a_batch_without_faking_running_or_retaining_content() {
+        let mut session = Some(Session::new("codex", "batch", "C:/fixture", 0));
+        for payload in [
+            json!({"type":"function_call","call_id":"call1","name":"Read","arguments":"PRIVATE"}),
+            json!({"type":"function_call_output","call_id":"call1","output":"SECRET"}),
+            json!({"type":"reasoning","summary":"SECRET"}),
+        ] {
+            let record = json!({"type":"response_item","timestamp":"2026-10-14T00:00:00Z","payload":payload});
+            apply(&mut session, &serde_json::to_vec(&record).unwrap(), false).unwrap();
+        }
+        let session = session.unwrap();
+        assert_eq!(session.runtime.state, Activity::Thinking);
+        assert_eq!(session.recent_tools.len(), 1);
+        assert_eq!(session.recent_tools[0].name, "Read");
+        assert_eq!(session.recent_tools[0].status, ToolStatus::Returned);
+        let serialized = serde_json::to_string(&session).unwrap();
+        assert!(!serialized.contains("PRIVATE"));
+        assert!(!serialized.contains("SECRET"));
+    }
+
+    #[test]
+    fn observations_are_bounded_deduplicated_and_require_an_explicit_return() {
+        let mut session = Session::new("codex", "test", "C:/fixture", 0);
+        session.observe_tool("first".into(), "Read".into(), ToolStatus::Observed, 1);
+        session.activity(Activity::Thinking, None, 2);
+        assert_eq!(session.recent_tools[0].status, ToolStatus::Observed);
+        session.observe_tool("first".into(), "Read".into(), ToolStatus::Returned, 3);
+        session.observe_tool("first".into(), "Read".into(), ToolStatus::Observed, 4);
+        assert_eq!(session.recent_tools.len(), 1);
+        assert_eq!(session.recent_tools[0].status, ToolStatus::Returned);
+        for id in 0..20 {
+            session.observe_tool(id.to_string(), "Read".into(), ToolStatus::Observed, id);
+        }
+        assert_eq!(session.recent_tools.len(), crate::model::RECENT_TOOL_LIMIT);
     }
 }

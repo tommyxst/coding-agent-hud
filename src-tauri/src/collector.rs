@@ -108,7 +108,7 @@ fn collect(app: &AppHandle, shared: &Shared) -> Result<(), String> {
         shared,
         "claude",
         "watching",
-        "Hook 入口就绪；需按 README 显式配置 Claude Hooks",
+        "等待首个 HUD Hook 事件；入口就绪不代表已接入。请配置 Hook 并启动新 Claude 会话",
     )?;
     let watch_root = if directory.is_dir() {
         Some(directory.clone())
@@ -172,7 +172,7 @@ fn collect(app: &AppHandle, shared: &Shared) -> Result<(), String> {
     files(&events, "json", &mut pending)?;
     pending.sort();
     for path in pending {
-        hook(&path, shared, &tx, &mut observed)?;
+        hook(&path, shared, &tx, &mut observed, false)?;
     }
     publish(app, shared)?;
     for signal in rx {
@@ -203,7 +203,7 @@ fn collect(app: &AppHandle, shared: &Shared) -> Result<(), String> {
                         && path.extension().is_some_and(|ext| ext == "json")
                         && path.is_file()
                     {
-                        if let Err(error) = hook(&path, shared, &tx, &mut observed) {
+                        if let Err(error) = hook(&path, shared, &tx, &mut observed, true) {
                             status(shared, "claude", "error", error)?;
                         }
                     } else if path.starts_with(&directory)
@@ -303,6 +303,10 @@ fn rollout(
                 .remove(&s.id);
         }
     } else if let Some(session) = entry.session.as_mut() {
+        // The first read reconstructs state; do not present historical calls as new activity.
+        if previous.is_none() {
+            session.recent_tools.clear();
+        }
         if previous == Some(session.clone()) {
             return Ok(());
         }
@@ -334,6 +338,7 @@ fn hook(
     shared: &Shared,
     tx: &mpsc::Sender<Signal>,
     observed: &mut HashSet<u32>,
+    live: bool,
 ) -> Result<(), String> {
     let metadata = fs::metadata(path).map_err(|e| format!("stat hook event: {e}"))?;
     if metadata.len() > hooks::MAX_HOOK_BYTES {
@@ -348,8 +353,20 @@ fn hook(
         .get(&event.agent_pid)
         .is_some_and(|(_, name)| name.eq_ignore_ascii_case("claude.exe"))
     {
+        status(
+            shared,
+            "claude",
+            "unavailable",
+            "Hook 进程已结束或不是受支持的原生 claude.exe；请启动新会话",
+        )?;
         return Ok(());
     }
+    status(
+        shared,
+        "claude",
+        "watching",
+        "已收到并验证原生 Claude Hook 元数据",
+    )?;
     observe(event.agent_pid, tx, observed)?;
     let id = format!("windows:claude:{}", event.session_id);
     let previous = shared
@@ -369,6 +386,9 @@ fn hook(
             .sessions
             .remove(&id);
     } else {
+        if !live {
+            session.recent_tools.clear();
+        }
         session.workspace = Some(native::workspace(event.agent_pid)?);
         if matches!(
             event.kind,

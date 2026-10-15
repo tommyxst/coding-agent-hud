@@ -19,6 +19,25 @@ pub enum AttentionState {
     Error,
 }
 
+pub const RECENT_TOOL_LIMIT: usize = 8;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ToolStatus {
+    Observed,
+    Returned,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolObservation {
+    pub id: String,
+    pub name: String,
+    pub status: ToolStatus,
+    pub observed_at: i64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Session {
@@ -36,6 +55,8 @@ pub struct Session {
     pub tokens: Option<Tokens>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workspace: Option<Workspace>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub recent_tools: Vec<ToolObservation>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -165,6 +186,36 @@ impl Session {
             context: None,
             tokens: None,
             workspace: None,
+            recent_tools: Vec::new(),
+        }
+    }
+
+    pub fn observe_tool(&mut self, id: String, name: String, status: ToolStatus, timestamp: i64) {
+        if let Some(index) = self.recent_tools.iter().position(|tool| tool.id == id) {
+            let tool = &self.recent_tools[index];
+            // Duplicates and generic returns must not downgrade a known failure.
+            if tool.status == status
+                || status == ToolStatus::Observed
+                || tool.status == ToolStatus::Failed
+                || timestamp < tool.observed_at
+            {
+                return;
+            }
+            let mut tool = self.recent_tools.remove(index);
+            tool.status = status;
+            tool.observed_at = timestamp;
+            self.recent_tools.push(tool);
+        } else {
+            self.recent_tools.push(ToolObservation {
+                id,
+                name,
+                status,
+                observed_at: timestamp,
+            });
+        }
+        self.recent_tools.sort_by_key(|tool| tool.observed_at);
+        if self.recent_tools.len() > RECENT_TOOL_LIMIT {
+            self.recent_tools.remove(0);
         }
     }
 
@@ -188,5 +239,32 @@ impl Session {
             state,
             message: Some(message.into()),
         };
+    }
+}
+
+#[cfg(test)]
+mod observation_tests {
+    use super::*;
+    #[test]
+    fn a_generic_return_never_downgrades_failure() {
+        let mut session = Session::new("codex", "fixture", "C:/fixture", 0);
+        session.observe_tool("a".into(), "Bash".into(), ToolStatus::Failed, 1);
+        session.observe_tool("a".into(), "Bash".into(), ToolStatus::Returned, 2);
+        assert_eq!(session.recent_tools[0].status, ToolStatus::Failed);
+    }
+    #[test]
+    fn a_long_tool_return_is_recent_after_many_short_calls() {
+        let mut session = Session::new("codex", "fixture", "C:/fixture", 0);
+        session.observe_tool("long".into(), "Bash".into(), ToolStatus::Observed, 0);
+        for time in 1..8 {
+            session.observe_tool(time.to_string(), "Read".into(), ToolStatus::Returned, time);
+        }
+        session.observe_tool("long".into(), "Bash".into(), ToolStatus::Returned, 9);
+        session.observe_tool("new".into(), "Read".into(), ToolStatus::Observed, 10);
+        assert_eq!(session.recent_tools.len(), RECENT_TOOL_LIMIT);
+        assert!(session
+            .recent_tools
+            .iter()
+            .any(|tool| tool.id == "long" && tool.observed_at == 9));
     }
 }

@@ -18,7 +18,7 @@ describe('versioned local settings', () => {
     expect(parseSettings(setItem.mock.calls[0][1])).toEqual(DEFAULT_SETTINGS);
   });
   it.each([
-    'not json', encode(DEFAULT_SETTINGS, 2), encode(null),
+    'not json', encode(DEFAULT_SETTINGS, 999), encode(null),
     encode({ ...DEFAULT_SETTINGS, opacity: 0 }),
     encode({ ...DEFAULT_SETTINGS, opacity: 1.01 }),
     encode({ ...DEFAULT_SETTINGS, clickThrough: 'true' }),
@@ -40,4 +40,21 @@ describe('versioned local settings', () => {
   it('propagates persistence errors, so UI can state the setting was not saved', () => {
     expect(() => saveSettings({ setItem: () => { throw new Error('Quota exceeded'); } }, DEFAULT_SETTINGS)).toThrow('Quota exceeded');
   });
+});
+
+it('migrates valid v1 settings without discarding previous privacy and appearance choices', () => {
+  const { fontSize, alwaysOnTop, ...legacy } = DEFAULT_SETTINGS;
+  expect(parseSettings(encode({ ...legacy, opacity: 0.7, showRepositoryPath: true }, 1))).toEqual({ ...DEFAULT_SETTINGS, opacity: 0.7, showRepositoryPath: true });
+  expect(() => parseSettings(encode({ ...legacy, extra: true }, 1))).toThrow();
+});
+
+it.each([11, 21, 15.5, '15', null])('rejects invalid font size %s', fontSize => {
+  expect(() => parseSettings(encode({ ...DEFAULT_SETTINGS, fontSize }))).toThrow();
+});
+
+it('persists font and topmost choices through save/load', () => {
+  let raw = '';
+  const settings = { ...DEFAULT_SETTINGS, fontSize: 20, alwaysOnTop: false };
+  saveSettings({ setItem: (_key, value) => { raw = value; } }, settings);
+  expect(loadSettings({ getItem: () => raw }).settings).toEqual(settings);
 });

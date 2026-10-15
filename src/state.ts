@@ -85,8 +85,13 @@ export function nextDoneDelay(records: DoneRecords, now: number, doneDisplayMs: 
     : Math.max(0, Math.min(...pending.map(record => record.seenAt + doneDisplayMs - now)));
 }
 
-export function modeKey(session: AgentSession, done: DoneRecords): string {
-  return `${session.id}:${session.runtime.state}:${displayedAttention(session, done)}`;
+export interface ViewChoice { key: string; mode: HudMode }
+
+export function resolveMode(session: AgentSession, done: DoneRecords, view: ViewChoice | null): HudMode {
+  const requested = view?.key === session.id ? view.mode : null;
+  if (requested === 'expanded') return 'expanded';
+  if (displayedAttention(session, done) !== 'NONE') return 'attention';
+  return requested ?? automaticMode(session, done);
 }
 
 export function automaticMode(session: AgentSession, done: DoneRecords): HudMode {

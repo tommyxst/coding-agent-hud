@@ -27,7 +27,29 @@ pub struct HudState {
 }
 pub type Shared = Arc<Mutex<HudState>>;
 
+#[derive(Clone, Copy)]
+enum InteractionAction {
+    Alt(bool),
+    Reveal,
+    Exit,
+}
+
 impl HudState {
+    fn apply_interaction(&mut self, action: InteractionAction) -> bool {
+        match action {
+            InteractionAction::Alt(pressed) if self.alt == pressed => return false,
+            InteractionAction::Alt(pressed) => self.alt = pressed,
+            InteractionAction::Reveal => {
+                self.interactive = true;
+                self.force_show = true;
+            }
+            InteractionAction::Exit => {
+                self.interactive = false;
+                self.force_show = false;
+            }
+        }
+        true
+    }
     fn snapshot(&self) -> Snapshot {
         let mut sessions: Vec<_> = self.sessions.values().cloned().collect();
         if !self.show_detail {
@@ -120,6 +142,15 @@ fn set_window_behavior(
     native::configure_hud_window(window.hwnd().map_err(|e| e.to_string())?.0 as _)
 }
 #[tauri::command]
+fn set_always_on_top(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let window = app.get_webview_window("hud").ok_or("HUD window missing")?;
+    window
+        .set_always_on_top(enabled)
+        .map_err(|error| format!("set HUD topmost: {error}"))?;
+    native::configure_hud_window(window.hwnd().map_err(|error| error.to_string())?.0 as _)
+}
+
+#[tauri::command]
 fn resize_window(app: AppHandle, width: f64, height: f64) -> Result<(), String> {
     let window = app.get_webview_window("hud").ok_or("HUD window missing")?;
     let monitor = window
@@ -154,16 +185,11 @@ fn return_to_workspace(state: State<'_, Shared>, id: String) -> Result<(), Strin
     native::return_to_workspace(&workspace)
 }
 
-fn interaction(app: &AppHandle, shared: &Shared, alt: Option<bool>) -> Result<(), String> {
+fn interaction(app: &AppHandle, shared: &Shared, action: InteractionAction) -> Result<(), String> {
     let (enabled, click_through, visible) = {
         let mut state = shared.lock().map_err(|e| e.to_string())?;
-        match alt {
-            Some(pressed) if state.alt == pressed => return Ok(()),
-            Some(pressed) => state.alt = pressed,
-            None => {
-                state.interactive = !state.interactive;
-                state.force_show = state.interactive;
-            }
+        if !state.apply_interaction(action) {
+            return Ok(());
         }
         (
             state.alt || state.interactive,
@@ -177,6 +203,9 @@ fn interaction(app: &AppHandle, shared: &Shared, alt: Option<bool>) -> Result<()
         .map_err(|e| e.to_string())?;
     if visible {
         window.show().map_err(|e| e.to_string())?;
+        if matches!(action, InteractionAction::Reveal) {
+            native::reveal_hud_window(window.hwnd().map_err(|e| e.to_string())?.0 as _)?;
+        }
     } else {
         window.hide().map_err(|e| e.to_string())?;
     }
@@ -189,12 +218,13 @@ fn tray(app: &AppHandle, shared: Shared) -> tauri::Result<()> {
     let show = MenuItem::with_id(
         app,
         "interaction",
-        "显示 / 退出交互模式",
+        "显示 HUD / 进入交互模式",
         true,
         None::<&str>,
     )?;
+    let leave = MenuItem::with_id(app, "leave-interaction", "退出交互模式", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "退出 Coding Agent HUD", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &quit])?;
+    let menu = Menu::with_items(app, &[&show, &leave, &quit])?;
     let mut pixels = vec![0u8; 32 * 32 * 4];
     for y in 4..28 {
         for x in 4..28 {
@@ -215,7 +245,12 @@ fn tray(app: &AppHandle, shared: Shared) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(move |app, event| match event.id.as_ref() {
             "interaction" => {
-                if let Err(error) = interaction(app, &shared, None) {
+                if let Err(error) = interaction(app, &shared, InteractionAction::Reveal) {
+                    eprintln!("HUD interaction: {error}");
+                }
+            }
+            "leave-interaction" => {
+                if let Err(error) = interaction(app, &shared, InteractionAction::Exit) {
                     eprintln!("HUD interaction: {error}");
                 }
             }
@@ -231,7 +266,9 @@ fn tray(app: &AppHandle, shared: Shared) -> tauri::Result<()> {
                     ..
                 }
             ) {
-                if let Err(error) = interaction(tray.app_handle(), &clicked_state, None) {
+                if let Err(error) =
+                    interaction(tray.app_handle(), &clicked_state, InteractionAction::Reveal)
+                {
                     eprintln!("HUD interaction: {error}");
                 }
             }
@@ -252,6 +289,7 @@ pub fn run() {
             get_snapshot,
             set_privacy,
             set_window_behavior,
+            set_always_on_top,
             resize_window,
             return_to_workspace
         ])
@@ -264,7 +302,9 @@ pub fn run() {
             let alt_state = setup_state.clone();
             std::thread::spawn(move || {
                 for pressed in rx {
-                    if let Err(error) = interaction(&handle, &alt_state, Some(pressed)) {
+                    if let Err(error) =
+                        interaction(&handle, &alt_state, InteractionAction::Alt(pressed))
+                    {
                         eprintln!("HUD Alt: {error}");
                     }
                 }
@@ -327,5 +367,34 @@ mod visibility_tests {
         assert!(!state.visible());
         state.force_show = true;
         assert!(state.visible());
+    }
+    #[test]
+    fn repeated_reveal_stays_interactive_until_explicit_exit() {
+        let mut state = HudState::default();
+        for _ in 0..2 {
+            assert!(state.apply_interaction(InteractionAction::Reveal));
+            assert!(state.interactive && state.force_show && state.visible());
+            assert!(!state.click_through());
+        }
+        assert!(state.apply_interaction(InteractionAction::Exit));
+        assert!(!state.interactive && !state.force_show && !state.visible());
+    }
+
+    #[test]
+    fn exit_preserves_sessions_and_independent_alt_override() {
+        let mut state = HudState {
+            requested_click_through: true,
+            ..Default::default()
+        };
+        let session = Session::new("codex", "fixture", "C:/fixture", 0);
+        state.sessions.insert(session.id.clone(), session);
+        state.apply_interaction(InteractionAction::Reveal);
+        state.apply_interaction(InteractionAction::Alt(true));
+        state.apply_interaction(InteractionAction::Exit);
+        assert!(state.visible() && state.alt);
+        assert!(!state.click_through());
+        state.apply_interaction(InteractionAction::Alt(false));
+        assert!(state.visible() && state.click_through());
+        assert!(!state.apply_interaction(InteractionAction::Alt(false)));
     }
 }

@@ -13,6 +13,7 @@ export interface AgentSession {
   context?: { used: number; limit?: number; estimated: boolean };
   tokens?: { input?: number; output?: number; reasoning?: number; cached?: number };
   workspace?: { terminalPid?: number; terminalType?: string; agentPid?: number };
+  recentTools?: { id: string; name: string; status: 'OBSERVED' | 'RETURNED' | 'FAILED'; observedAt: number }[];
 }
 
 export interface CollectorStatus {
@@ -28,6 +29,8 @@ export interface Snapshot {
 
 export interface HudSettings {
   opacity: number;
+  fontSize: number;
+  alwaysOnTop: boolean;
   reducedMotion: boolean;
   clickThrough: boolean;
   showCommandDetail: boolean;
@@ -37,6 +40,8 @@ export interface HudSettings {
 
 export const DEFAULT_SETTINGS: HudSettings = {
   opacity: 0.88,
+  fontSize: 15,
+  alwaysOnTop: true,
   reducedMotion: false,
   clickThrough: true,
   showCommandDetail: false,

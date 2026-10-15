@@ -1,6 +1,6 @@
 import type { CollectorStatus, HudSettings } from './model';
 import { Icon } from './Icon';
-import { DONE_DISPLAY_MAX, DONE_DISPLAY_MIN, OPACITY_MAX, OPACITY_MIN } from './settings';
+import { DONE_DISPLAY_MAX, DONE_DISPLAY_MIN, FONT_SIZE_MAX, FONT_SIZE_MIN, OPACITY_MAX, OPACITY_MIN } from './settings';
 
 interface SettingsProps {
   settings: HudSettings;
@@ -38,6 +38,11 @@ export function SettingsPanel({ settings, disabled, native, onChange, onReset, o
           : '只在桌面 native 生效；DEMO 始终可操作。')}
         {toggle('reducedMotion', '减少动态效果', '系统减少动态效果设置也始终生效。')}
         <label className="setting-slider">
+          <span>界面字号 <output className="mono">{settings.fontSize} px</output></span>
+          <input type="range" aria-label="界面字号" min={FONT_SIZE_MIN} max={FONT_SIZE_MAX} step="1"
+            value={settings.fontSize} onChange={event => onChange({ ...settings, fontSize: Number(event.target.value) })}/>
+        </label>
+        <label className="setting-slider">
           <span>背景不透明度 <output className="mono">{Math.round(settings.opacity * 100)}%</output></span>
           <input type="range" min={OPACITY_MIN * 100} max={OPACITY_MAX * 100} step="1"
             value={Math.round(settings.opacity * 100)}
@@ -56,7 +61,7 @@ export function SettingsPanel({ settings, disabled, native, onChange, onReset, o
         </label>
       </fieldset>
       <footer className="settings-footer">
-        <span role="status">{disabled ? '配置未读取，需明确重置' : saved ? '已保存至本机 · v1' : '当前设置尚未保存'}</span>
+        <span role="status">{disabled ? '配置未读取，需明确重置' : saved ? '已保存至本机' : '当前设置尚未保存'}</span>
         <button className="text-button" onClick={onReset}>重置为默认</button>
       </footer>
     </section>

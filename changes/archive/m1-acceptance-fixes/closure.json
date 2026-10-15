@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "task": "m1-acceptance-fixes",
+  "status": "ready",
+  "goal": "M1 验收修复：Claude 接入、工具事件反馈、详情稳定、字号设置、拖动、窗口置顶、动画连续性；每项指定模型子代理评审。",
+  "criteria": [
+    "每项完成后 gpt-6-astra 或 grok-4.7 评审",
+    "相关测试与 Windows Release 构建通过",
+    "Claude Hook 授权合并且保留原配置",
+    "真实 Agent 尚未复验的边界明确"
+  ],
+  "scope": [
+    "src/",
+    "src-tauri/",
+    "tests/",
+    "scripts/",
+    "docs/",
+    "README.md",
+    "STATE.json"
+  ],
+  "constraints": [
+    "不提交、推送或合入 main",
+    "保留用户 AGENTS.md 和原始验收记录",
+    "无模型调用，无 WSL/安装包扩展"
+  ],
+  "current": "M1 验收修复：Claude 接入、工具事件反馈、详情稳定、字号设置、拖动、窗口置顶、动画连续性；每项指定模型子代理评审。",
+  "next": [],
+  "blocked": [],
+  "followUp": null,
+  "change": "changes/active/m1-acceptance-fixes",
+  "layer": "docs",
+  "verification": {
+    "evidence": "TS + 71 Vitest；Node Hook 配置 4 测试；Edge UI 34 项；App IPC mock 6 组；Rust fmt / strict Clippy / 28 tests；frontend + Windows Release 应用和 helper 构建成功；原生启动不抢焦点；Release fixture 8 组含实际 topmost 样式切换、历史抑制与实时短批次、退出隐藏；授权 9 Hook 只读核对保留原配置。指定模型逐项评审修正复测见 docs/verification.md。二进制附件 docs/screenshots/m1-default-font.png、m1-large-font.png、m1-native-fixture.png 已查看、保留，不适用文本行数预算。",
+    "diffReview": "git diff --check 通过；暂存区为空；无提交/推送/合并；原 PRD、UI&UX、用户 AGENTS.md 与 m1-acceptance.md 保留；依赖锁文件未改；凭据模式扫描无匹配；构建产物被忽略。",
+    "intentHash": "f70017fe4be60662cf3cbecda25d9033a5f1c6831a17ff756f8d20f32dd4cf34",
+    "fingerprints": {
+      "README.md": "d9da09d1a24d585752897f34ddad9329b0603559a4dbe4e6f77aa5ef0f6c1e68",
+      "docs/development-plan.md": "5226c6a4724de3ce21f3cf6edf8ed40c16ec6fbcb096c246c5a3ff33e07d36fc",
+      "docs/verification.md": "cdded90208973b91f3d0878069ebb46bb62e70b943a8e2c4d6ab5a73ab8c3521",
+      "scripts/configure-claude-hooks.cjs": "bc9dc1d6d21e7bca4a189ab642e1aaa3c61e750402365f8c0d3ff0310ef2fe44",
+      "scripts/configure-claude-hooks.node.cjs": "b218fc8ff976ad1a0441f57b58012dbb03d0c747406ba959760dad30050612de",
+      "scripts/read-window-state.ps1": "591dd9e28746afe6bddbf9869745e65817c9fad612d5176cae83c936288a6031",
+      "scripts/verify-m1-native-mock.cjs": "66dee460d204ccdbd1aef19272f5aede7c278f561368ba9ec8b10f1b24182fd2",
+      "scripts/verify-m1-ui.cjs": "a25cb0119441a131d3340de5035d29596efc414dc00ddb3f3a6560a908bf028e",
+      "scripts/verify-native.cjs": "9a2b159330fb3d24ca30a445f6a272639df33cbc442be9c51bfc1ba2127a98d3",
+      "scripts/verify-window.ps1": "852535ff599608c26f8c03c79a85e5cf941548344cc6226d68bb321e6285707b",
+      "src-tauri/src/app.rs": "5c96c4da9c8aa5b99801c087799cf4d666da7323783aa124fb90ec3331f8a913",
+      "src-tauri/src/codex.rs": "b3c39ccbf6d6068b079c8926cf8bbc07188956c4464d3128877f593556823cd2",
+      "src-tauri/src/collector.rs": "5c166c5db0e04d412084e11d1a2e6facf5bcc0738038b957369ee8eea13bc9e9",
+      "src-tauri/src/hooks.rs": "cb07d087703279d11efecc24be7d638d7157dbe846ea6b1145fd28f9456df7e1",
+      "src-tauri/src/model.rs": "e467588f50700221ebd63d4aba7bf05a9893127d7458d9cd97e5e0c66a1a88de",
+      "src/App.tsx": "dede19c4fbca1646d79725ee45a848f9fc86c3c80008fb21e6bb7c301b34d26e",
+      "src/Hud.tsx": "64ae14a3e92adc0efe35d3faf8f89f2e6e40c6fca6213f84680a6cfae3347c59",
+      "src/PipelineTrack.tsx": "d433ba4356e79c376c53f204d9dde72554ace21de7bc6d8e74bfe05b04a2e6d1",
+      "src/Panels.tsx": "9733f31d0cc2eb278eefc514bf90b16ca5ab4489343eb4cae99a53f8f94c68eb",
+      "src/model.ts": "4febdc0624964031bc87168a37459cd4d6f43dab0c739803f3fe79f98bd15045",
+      "src/settings.ts": "f5ac6fca5241ac1741be2e3ddb8ff4cb2baeab184419bd5ffac4362f31c0c7ce",
+      "src/state.ts": "046d9e3368caf5d4048af84e8d3186f5193a7fae0f10847431f70662f4d01f48",
+      "src/styles.css": "bff3a18ae2e619337170dee31a29c014279acbdc9dd92e6918559a3ae8000b68",
+      "tests/frontend-render.test.tsx": "493129601debb9feb054cf46c60184149c0546092343c43777ead37a7cc8f76c",
+      "tests/frontend-settings.test.ts": "7647f81d5e90965cba6a7395af335b37628d0dd900dc8f48a365df595c71ac99",
+      "tests/frontend-state.test.ts": "48d3bdbe77628543107e6679b7e9bf3c353d6d328b491e4914c7fdc5fb158913",
+      "AGENTS.md": "460992be8678bb959e5a822298a8bacbbdd4f102c92ac29c4ebd8d99e0c71429"
+    },
+    "at": "2026-10-14T10:55:09.836Z"
+  },
+  "gate": {
+    "decisions": {},
+    "summary": "README 已更新窗口置顶替代会话 Pin、拖动柄、12–20 px 字号、稳定详情与动画策略，以及显式授权 Hook 合并/备份/选择性撤销用法。docs/development-plan.md 更新修复依赖与 M2/M3 边界；docs/verification.md 记录七项指定模型评审修正、实际检查/构建 SHA-256、隔离脚本复现、备份位置及真实 Agent/物理输入未验收项。无新增生产依赖。配置备份与构建产物留仓库外；全部代码留未提交修复分支。"
+  }
+}
