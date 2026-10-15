@@ -15,7 +15,8 @@ fn forward() -> Result<(), String> {
         .read_to_end(&mut input)
         .map_err(|e| format!("read hook input: {e}"))?;
     let pid = native::agent_ancestor("claude")?;
-    let event = HookEvent::from_input(&input, pid)?;
+    let mut event = HookEvent::from_input(&input, pid)?;
+    event.agent_started_at = Some(native::process_started_at(pid)?);
     let directory = event_dir()?;
     fs::create_dir_all(&directory).map_err(|e| format!("create HUD event directory: {e}"))?;
     let nonce = SystemTime::now()

@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "task": "m2-agent-reliability",
+  "status": "ready",
+  "goal": "实施已批准的 M2-A 事件能力验证、M2-B 可靠采集及 Claude 遥测/安全卸载、M2-C Windows 终端窗口映射；不接管 Agent 执行或审批",
+  "criteria": [
+    "形成固定版本的事件来源与覆盖表，区分源码、合成和真实交互证据",
+    "实现已证实的只读实时入口，不将审批前置 Hook 直接当人工等待",
+    "Claude 遥测只更新可靠模型/Token/Context，不改实时状态或复活退出会话；提供安全卸载",
+    "改进已确认终端窗口绑定，无法确认时不误唤醒；补充回归",
+    "运行相关前后端检查、Release 构建和隔离原生验收并更新使用文档；未完成真实验收如实保留"
+  ],
+  "scope": [
+    "src-tauri/src/",
+    "scripts/",
+    "tests/",
+    "src/",
+    "docs/",
+    "README.md",
+    "STATE.json",
+    "src-tauri/Cargo.toml"
+  ],
+  "constraints": [
+    "不修改原始 PRD、UI&UX、AGENTS.md，不增加无关 UI/动画/WSL 范围",
+    "无明确授权不修改用户全局配置、不调用真实模型、不新增生产依赖",
+    "不暂存、提交、推送或主干合并；保留用户改动",
+    "真实 transcript/正文/凭据不写入 HUD 持久化数据或仓库"
+  ],
+  "current": "M2-A/B/C 开发版实现与文档已完成；单次复核缺陷已修复，58 项 Rust、71 项前端、9 项 Hook 测试、严格 Clippy/Release 和最终 21 组串行隔离原生验收通过；真实 Agent/daemon/helper/各终端交互未验收，未写用户配置或调用模型",
+  "next": [
+    "完成最终隐私、范围和差异核对并记录开发版验证边界"
+  ],
+  "blocked": [],
+  "followUp": null,
+  "change": "changes/active/m2-agent-reliability",
+  "layer": "docs",
+  "verification": {
+    "evidence": "M2 开发版：npm run check 71 项；Hook 安装/卸载 Node 9 项；cargo fmt / fixture rustfmt、严格 Clippy、cargo test 58 项、桌面与 helper Release 均成功。最终隔离 native 21 组、0 page errors、0 model calls，scratch/native-e2e-1792056524236/result.json；窗口 smoke 通过。超时批次未计通过，拆分重跑；并行焦点失败未放宽断言，串行重跑通过。diff --check、保护路径和凭据模式扫描通过，暂存区为空，测试代理残留0。真实 Agent/helper/daemon/终端交互与性能未验收，新增5Hook未安装；见 docs/m2-verification.md、docs/m2-event-coverage.md。",
+    "diffReview": "单次只读复核后修复并行返回误清 Waiting、ElicitationResult 丢失 Running；Claude PermissionRequest 仅候选，明确 Notification 才人工审批等待。HUD 脚本互斥写入，外部编辑器 CAS 限制明确披露。未新增生产包或修改锁文件/PRD/UI&UX/AGENTS.md；未暂存、提交、推送、合并。",
+    "intentHash": "a134fa83c1652d9406452a2a4de9b756bebfe91c06503a617c2add7ea25a6c8f",
+    "fingerprints": {
+      "README.md": "0898666589473a63de5c22bd9792a99ba1f491a8d3b0832b928792f093ec2da4",
+      "docs/claude-hooks.example.json": "5c5adaeb5df294c1a260732079790eda6dff71129797653484549c4f7956debc",
+      "docs/development-plan.md": "d94af378782864d2f3103107cca0b31b895a5f0cd772e2080672f96b450c5437",
+      "docs/verification.md": "77029063b0a39c56fd7383bba7e880530ffc12d6d8c490e6df7761db3ad4e44d",
+      "docs/m2-event-coverage.md": "9a5de3dc7f2d795c94813ee729c56c0ac27dc5eba87bc927e65a1b576828f1f4",
+      "docs/m2-verification.md": "f40b27afcf9438bdf5f9f9fcb5cfdefa505b856832a384625dd8b21d6e40be2c",
+      "scripts/configure-claude-hooks.cjs": "507bb1d6b31ea1b7448930c7a01d380477c49afed7bc4f63f6f54b0c3f41dba7",
+      "scripts/configure-claude-hooks.node.cjs": "9913780b778d58f7e8a3db050d49fb7c42ef702befb40a5b406db353397d5953",
+      "scripts/unconfigure-claude-hooks.cjs": "7eb0d3801d68cbd4f82b0e4161c4d76b037c256a5a19da3dc4c12a47cb9ea029",
+      "scripts/unconfigure-claude-hooks.node.cjs": "eb014c30dc6d6bf14b6e39f9ebc2c4a37bdd41ab5d24ed3674b25ab29fa5d1bf",
+      "scripts/verify-native.cjs": "3231e25aebccad25296a6f4cab81e58d22eade1770cc983b425997345a3293d6",
+      "scripts/codex-proxy-fixture.rs": "d485007bf5e316d84bd7e2ede98ed29e68bd408eeca969a7b905339995aa37de",
+      "src-tauri/Cargo.toml": "4333d6c6a6969d7289793353dfddf79167390704ab1677a0ea6b39652e33e57b",
+      "src-tauri/src/bin/agent-hud-hook.rs": "35e35d2b8f4c06b7d39d532d7b34245a8bf8557e9e70eb82d99233d6085a42a6",
+      "src-tauri/src/collector.rs": "a71139dbbddada9574183263f24938846b2c17b11d36bdd724dc8546bc840e25",
+      "src-tauri/src/hooks.rs": "6fb70f66b88294f479dafbb7fb851dc154f8931a70fa86d19d45caa42f9908cb",
+      "src-tauri/src/lib.rs": "cbeeeab7c5e141388fe41e285b848f4a0876d13d6115e3ac2f340e24d8a84918",
+      "src-tauri/src/model.rs": "e4ce460cf5e4aa3c87119d71bdbb8f85f6b65c81ffd550a0723666a3910d7e6f",
+      "src-tauri/src/native.rs": "b336e45bc5e37aa1d7935874680c474cd660dfaa5e2046c5d5e1735ea7dbd5bd",
+      "src-tauri/src/tail.rs": "a035707c2db9d6ece69676c94cf9fbd686e1858aa27ac7d0045225707cc00c22",
+      "src-tauri/src/claude.rs": "64a77015fc468330e657d937ef9490bf1ba5cdf4ff99911b500d763215536f9f",
+      "src-tauri/src/codex_live.rs": "e2119bdfa169afd252ab9a3d9c6a11bed1cd0e4a988f68dc1c22709d0a4a2137",
+      "AGENTS.md": "92363246bb267aea14209298b94c24ab67c6f94f527ff43f5bd435277159d08b"
+    },
+    "at": "2026-10-15T09:33:04.927Z"
+  },
+  "gate": {
+    "decisions": {},
+    "summary": "已更新 README.md 的 Codex 只读连接、Claude 14 Hook 安装/精确卸载、遥测及窗口返回用法；docs/m2-event-coverage.md 保存固定版本来源、只读安全边界、源端延迟和无法覆盖的事件；docs/m2-verification.md 保存最终检查、产物哈希、串行复现和未完成真实交互验收；development-plan/verification 索引同步。经验已写入相关使用限制：前置权限 Hook 不是人工等待，元数据/rollout 不可倒退实时层，模糊关联拒绝猜测，HUD 写入锁不约束外部编辑器，桌面焦点测试不可并行。无须新增临时 Notes。仅关闭开发版实现任务，不代表真实 Agent/完整 MVP 验收，不提交或发布。"
+  }
+}

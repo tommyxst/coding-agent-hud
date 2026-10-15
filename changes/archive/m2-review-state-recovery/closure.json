@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "task": "m2-review-state-recovery",
+  "status": "ready",
+  "goal": "修复用户评审报告中的 Codex 恢复通知丢失、Claude 晚返回遗留等待和启动回放丢失工具关联三项问题",
+  "criteria": [
+    "三项报告均有修复前失败、修复后通过的回归测试",
+    "Codex 新的已加载状态可重新开放会话，旧元数据响应不能覆盖新状态或复活关闭会话",
+    "Claude 乱序工具返回同步 Attention 且 runtime 时间戳不倒退；启动历史展示抑制不破坏内部审批关联",
+    "相关 Rust 检查和必要的原生回归通过，记录真实 Agent 未验收边界，保留已有未提交改动"
+  ],
+  "scope": [
+    "src-tauri/src/codex_live.rs",
+    "src-tauri/src/hooks.rs",
+    "src-tauri/src/collector.rs",
+    "scripts/verify-native.cjs",
+    "scripts/codex-proxy-fixture.rs",
+    "docs/m2-event-coverage.md",
+    "docs/m2-verification.md",
+    "STATE.json"
+  ],
+  "constraints": [
+    "保留当前 feat/m2-agent-reliability 分支上的既有未提交 M2 改动，不暂存、提交、推送、合并",
+    "不调用真实模型、不改用户配置、不新增生产依赖",
+    "仅修复报告范围及必要测试和文档，不扩大 UI、终端映射或事件覆盖范围"
+  ],
+  "current": "评审三项 P2 均已修复并有修复前失败证据；修复后 62 项 Rust、严格 Clippy、格式检查、桌面 Release 构建和 23 组隔离原生回归通过；0 模型调用/页面错误/测试代理残留。已核对相对本轮副本的差异、更新覆盖与验证文档，保留既有未提交 M2 改动",
+  "next": [],
+  "blocked": [],
+  "followUp": null,
+  "change": "changes/active/m2-review-state-recovery",
+  "layer": "docs",
+  "verification": {
+    "evidence": "修复前：新增 Rust 回归 59 通过/3 失败，scratch/m2-review-red-rust.log；旧 Release 原生夹具在启动回放后的实时返回仍 Waiting 而超时，m2-review-red-native.log。修复后：cargo test --locked --manifest-path src-tauri/Cargo.toml 共62项全通过；严格 Clippy、cargo fmt --check、fixture rustfmt、Node语法检查通过；npm run desktop:build 通过且更新两项Release产物；扩展原生夹具23组通过、0 page errors/0 model calls，scratch/native-e2e-1792059167564/result.json。修复后夹具曾读到启动中间快照，已显式等待回放完成，保留历史展示为空及实时返回解除等待的断言。git diff --check、凭据模式扫描、暂存区与测试进程清理核对通过。前端Vitest、Hook配置脚本、独立窗口smoke未在本轮重跑，真实Agent仍未验收；详见docs/m2-verification.md。",
+    "diffReview": "相对本轮开始的scratch副本审查三处生产路径：已加载状态解除closed、旧失败读取只在更新加载通知后补读、元数据不覆盖实时状态；晚返回仅同步刚解除的Waiting，使用现有runtime时间戳，保留其他输入与较新Done/Error；启动回放只删除running_tools.clear而继续清除recent_tools。新增4项Rust测试及2组原生回归，未更改公共请求白名单/用户配置/依赖/UI，保留当前分支既有未提交改动，未暂存提交推送。",
+    "intentHash": "9d34c0c124e43dfba906029e7c70d627b5be5a9dca4e551132351384e594292f",
+    "fingerprints": {
+      "src-tauri/src/codex_live.rs": "abcadfcf9df4964f5efab75965dff64d3180fa5c376e93faed743e91d352cf28",
+      "src-tauri/src/hooks.rs": "f622e6859f706ab606ff25c7e1398443c19bb0482612b3f4da22f67b66fffbd3",
+      "src-tauri/src/collector.rs": "51d3ee16f40f8dc9dbdb53244eb3b3146190a7b607602209d4c99ef98a359db1",
+      "scripts/verify-native.cjs": "0442b9172da355ca3785191c1711927711b338b357d832a715a699df39a07704",
+      "docs/m2-event-coverage.md": "36c44bc79c650b31fd8cbcf3f8034125878a35aee7d522f3208eb11c6f41c396",
+      "docs/m2-verification.md": "4d11aca6775a2554b5745a0f5c13404093e3930a12c1d48d782dfc2cfdc06938",
+      "README.md": "0898666589473a63de5c22bd9792a99ba1f491a8d3b0832b928792f093ec2da4",
+      "AGENTS.md": "92363246bb267aea14209298b94c24ab67c6f94f527ff43f5bd435277159d08b"
+    },
+    "at": "2026-10-15T10:18:46.231Z"
+  },
+  "gate": {
+    "decisions": {},
+    "summary": "已更新 docs/m2-event-coverage.md 的恢复通知、元数据优先级、启动回放和乱序返回语义；docs/m2-verification.md 记录三项修复前失败/修复后通过、62项Rust及23组原生结果、新产物哈希和本轮未重跑项。已保留经验：closed不是永久墓碑；元数据补读不能覆盖实时状态；内部在途记录与历史展示必须分离；晚返回可解除已解决的Attention但不能倒退时间或覆盖新终态；原生夹具须等待异步回放完成。README用法和公共协议未变，不需新增使用入口或Notes。真实Agent未验收边界不变，未写用户配置、调用真实模型或提交发布。"
+  }
+}

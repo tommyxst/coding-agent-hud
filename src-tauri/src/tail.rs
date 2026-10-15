@@ -1,30 +1,59 @@
 use std::{
     fs::File,
     io::{BufRead, BufReader, Seek, SeekFrom},
+    os::windows::io::AsRawHandle,
     path::Path,
+};
+use windows_sys::Win32::Storage::FileSystem::{
+    GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION,
 };
 
 /// Offset commits only complete records. Partial UTF-8 is left on disk until newline.
 #[derive(Default)]
 pub struct JsonlTail {
     pub offset: u64,
+    identity: Option<(u32, u32, u32)>,
 }
 
 impl JsonlTail {
+    fn prepare(&mut self, file: &File) -> Result<bool, String> {
+        let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
+        if unsafe { GetFileInformationByHandle(file.as_raw_handle() as _, &mut info) } == 0 {
+            return Err(format!(
+                "identify telemetry file: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+        let identity = (
+            info.dwVolumeSerialNumber,
+            info.nFileIndexHigh,
+            info.nFileIndexLow,
+        );
+        let length = file
+            .metadata()
+            .map_err(|e| format!("stat telemetry file: {e}"))?
+            .len();
+        let reset =
+            self.identity.is_some_and(|previous| previous != identity) || length < self.offset;
+        if reset {
+            self.offset = 0;
+        }
+        self.identity = Some(identity);
+        Ok(reset)
+    }
+
+    pub fn reset_if_changed(&mut self, path: &Path) -> Result<bool, String> {
+        let file = File::open(path).map_err(|e| format!("open telemetry file: {e}"))?;
+        self.prepare(&file)
+    }
+
     pub fn read(
         &mut self,
         path: &Path,
         mut consume: impl FnMut(&[u8]) -> Result<(), String>,
     ) -> Result<bool, String> {
-        let file = File::open(path).map_err(|e| format!("open rollout: {e}"))?;
-        let truncated = file
-            .metadata()
-            .map_err(|e| format!("stat rollout: {e}"))?
-            .len()
-            < self.offset;
-        if truncated {
-            self.offset = 0;
-        }
+        let file = File::open(path).map_err(|e| format!("open telemetry file: {e}"))?;
+        let truncated = self.prepare(&file)?;
         let mut reader = BufReader::new(file);
         reader
             .seek(SeekFrom::Start(self.offset))
@@ -118,5 +147,25 @@ mod tests {
         })
         .unwrap();
         fs::remove_file(path).unwrap();
+    }
+    #[test]
+    fn same_length_replacement_restarts_by_file_identity() {
+        let path = file("replacement");
+        let old = file("replacement-old");
+        fs::write(&path, b"old\n").unwrap();
+        let mut tail = JsonlTail::default();
+        tail.read(&path, |_| Ok(())).unwrap();
+        fs::rename(&path, &old).unwrap();
+        fs::write(&path, b"new\n").unwrap();
+        let mut records = Vec::new();
+        assert!(tail
+            .read(&path, |line| {
+                records.push(line.to_vec());
+                Ok(())
+            })
+            .unwrap());
+        assert_eq!(records, vec![b"new\n".to_vec()]);
+        fs::remove_file(path).unwrap();
+        fs::remove_file(old).unwrap();
     }
 }

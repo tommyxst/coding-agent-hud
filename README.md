@@ -2,7 +2,7 @@
 
 面向 Windows 的本地 Coding Agent 状态悬浮窗，观察 Claude Code 和 Codex，不接管模型调用、任务执行或权限审批。
 
-**状态：M1 开发版，完整 MVP 尚未验收。** 原始需求见 `Coding Agent HUD 产品需求文档 MVP.md`；顾问结论、开发阶段和验收边界见 `docs/development-plan.md`。
+**状态：M2 开发版，A / B / C 实现与隔离回归已完成；真实 Agent 和完整 MVP 尚未验收。** 原始需求见 `Coding Agent HUD 产品需求文档 MVP.md`；阶段、事件覆盖和验证边界见 `docs/development-plan.md`、`docs/m2-event-coverage.md`、`docs/m2-verification.md`。
 
 ## 开发启动
 
@@ -26,13 +26,14 @@ npm run dev
 ## 当前实现
 
 - Rust 统一 Session Model，Activity 与 Attention 分离。
-- Codex JSONL 增量尾读；Windows 文件事件触发，历史文件需确认 `codex.exe` 持有才显示。
+- Codex JSONL 增量尾读与已有共享 daemon 的只读状态补充；不订阅审批、不启动服务。
 - 进程退出监听和会话清理，Git root / branch 按事件刷新。
 - Compact / Active / Attention / Expanded、1+N Stack、手选 / Auto 和稳定的 Detail Drawer。
 - 近期工具元数据保留最多 8 条，展示最近 3 组；已观察 / 已返回 / 失败不冒充当前 Running。
 - Context 的未知/估算值、70% / 90% 提示；无可靠容量时不编造百分比。
 - 透明非激活窗、窗口置顶开关、专用拖动柄、托盘、鼠标穿透、Alt 临时交互。
 - 原生 Claude Hook helper，白名单提取并原子写入元数据；接收后删除事件文件。
+- Claude 异步 transcript 遥测、请求去重、compaction 失效及精确 Hook 卸载。
 - 默认关闭命令和完整路径展示；不保存 Prompt、回复、文件内容、Shell 输出或凭据。
 
 ## 窗口操作
@@ -48,9 +49,11 @@ npm run dev
 
 默认监听 `%USERPROFILE%/.codex/sessions`。遵循 Codex 的 `CODEX_HOME` 环境变量。
 
-运行 HUD 后正常启动 Codex。只有确认 rollout 被一个 `codex.exe` 持有时才注册会话。如果系统无法可靠确认文件持有进程，HUD 不将该文件猜成活跃会话。
+运行 HUD 后正常启动 Codex。rollout 只有确认被一个 `codex.exe` 持有时才注册。HUD 优先从该进程查询原生可执行文件路径，调用 `codex app-server proxy` 连接同一 `CODEX_HOME` 已有的共享 daemon；不会启动 daemon 或 Agent。
 
-本次协议适配参考 `codex-cli 0.162.1`。这个版本的 rollout **不会持久化全部审批请求、流式输出、工具开始/结束或瞬时错误**。已保存的 function call 能显示工具状态，但出现时间受 Agent 的持久化时机影响。因此仅靠 rollout 不能满足全部 Waiting User / Error 实时验收；下一阶段需要补充官方实时事件入口，不用超时猜测等待状态。
+适配依据为 `codex-cli 0.162.1`。只读连接只握手、列出已加载会话、读取不含 turns 的元数据，并接收全局状态广播。明确的审批 / 输入等待与解除优先于 rollout；Idle 不冒充 Done。daemon 单独发现的会话不绑定其进程为终端。元数据中的 prompt preview 直接丢弃，不保存、不展示。
+
+**覆盖有限：** embedded / `--no-daemon` 会话及不同 `CODEX_HOME` 不在共享连接内。连接失败保留 rollout 并显示 `codex-live` 诊断；仅在已验证 rollout 文件事件后重试，最短间隔 5 秒，不轮询。rollout 与全局状态仍不覆盖全部流式回复、瞬时工具或错误，不能据此声明完整实时验收。详情见 `docs/m2-event-coverage.md`。
 
 Context 取 `last_token_usage.total_tokens`，明确标记为最近一次模型请求的**估算值**；Token 取累计用量。两者不同。compaction 后无新的可靠统计时清空 Context。
 
@@ -73,13 +76,21 @@ $backupPath = Join-Path $env:LOCALAPPDATA 'CodingAgentHUD/config-backups'
 node scripts/configure-claude-hooks.cjs $settingsPath $helperPath $backupPath
 ```
 
-脚本要求显式绝对路径、已有合法配置和 helper；先备份原始字节，再保留已有设置与 Hook 并合并。重复运行不重复添加；结构非法或合并期间文件变化会报错。HUD 启动时不自动运行此脚本。安装后启动新 Claude 会话，Collector 诊断将从等待首个事件变为已验证接收。
+脚本要求显式绝对路径、已有合法配置和 helper；先备份原始字节，再保留已有设置与 Hook 并合并。重复运行不重复添加；结构非法或检测到文件变化会报错。HUD 启动时不自动运行此脚本。安装后启动新 Claude 会话，Collector 诊断将从等待首个事件变为已验证接收。
 
-撤销时只移除命令路径完全匹配该 helper 的 HUD Hook，保留其他 Hook。仅当安装后未再修改配置时才可恢复完整备份；否则参照备份选择性撤销，不覆盖后来的设置。备份包含用户配置，必须保留在仓库外。
+卸载时使用**原先安装的 helper 绝对路径**，即使 helper 文件已删除也可执行：
 
-Hook 覆盖 SessionStart、UserPromptSubmit、PreToolUse、PostToolUse、PostToolUseFailure、PermissionRequest、Notification、Stop 和 SessionEnd。`PreToolUse` 仅表示工具开始；PermissionRequest / permission_prompt 才表示需要审批。
+```powershell
+node scripts/unconfigure-claude-hooks.cjs $settingsPath $helperPath $backupPath
+```
 
-当前 helper 要求父进程链中存在原生 `claude.exe`。npm / Node 包装版和 WSL 版尚不支持，不能据此声明 Claude 全版本自动发现通过。Hook 安装后才会收到新事件；不会从历史 transcript 猜测当前状态。Claude Token / Context 补充采集放在 M2。
+脚本只删除命令与该 helper 精确匹配的 Hook，保留其他配置和混合 Hook 组；先备份原始字节，保留 BOM / CRLF，检测到并发变化则中止，重复执行无副作用。`.hud.lock` 互斥 HUD 写入，但不是文件 compare-and-swap：执行前停止外部配置编辑 / 写入。崩溃遗留锁时，确认没有脚本在运行后才能手动删除。不要用旧备份覆盖后来新增的设置。
+
+样例覆盖 14 个事件：SessionStart、UserPromptSubmit、PreToolUse、PostToolUse、PostToolUseFailure、PermissionRequest、Notification、Stop、SessionEnd、PreCompact、PostCompact、StopFailure、Elicitation、ElicitationResult。`PreToolUse` 不等于审批；Claude `PermissionRequest` 只登记候选，明确 `permission_prompt` 才显示人工审批等待。该 Notification 有源端延迟；无 ID / 同名并行时保守保留关联候选，不能保证即时解除。compaction 不改变 Waiting。
+
+Hook 的 `transcript_path` 触发独立异步尾读，只更新模型、Token 和 Context，不改变活动 / Attention 或复活退出会话。按请求 ID 去重流式记录；Token 是已观察请求的总量，Context 为最近一次输入及缓存之和，标记估算，不猜容量。格式并非跨版本稳定契约，缺字段仍未知。
+
+helper 仍要求原生 `claude.exe` 祖先进程；npm / Node 包装版和 WSL 未支持。新样例不会自动升级已有用户配置；需明确授权后重新合并，或自行安装。历史 transcript 不用于猜测当前状态。
 
 helper 失败返回普通非阻断错误，不返回权限拒绝码 2，也不输出任何审批决策。
 
@@ -93,13 +104,13 @@ helper 失败返回普通非阻断错误，不返回权限拒绝码 2，也不�
 
 环境变量由启动进程显式传入；项目不自动加载 `.env`。UI 设置只保存本地偏好，不保存会话历史。非法配置会报告错误，不静默替换。
 
-Return to Workspace 只唤醒已确认的终端窗口。Windows Terminal、VS Code 集成终端、重挂父进程等无法可靠匹配时，界面提示未绑定，不随便切换到其他窗口。此版本不定位终端 tab。
+Return to Workspace 只唤醒绑定时唯一、可见、祖先进程链已验证的终端窗口，并复核原 HWND、PID、名称和进程创建时间。Windows Terminal / VS Code 多窗口、ConPTY 无法确认关联、父进程重挂或原窗口已关闭时拒绝跳转；不会改选同进程的其他窗口，不定位 tab。
 
 ## 检查与构建
 
 ```bash
 npm run check
-node --test scripts/configure-claude-hooks.node.cjs
+node --test scripts/configure-claude-hooks.node.cjs scripts/unconfigure-claude-hooks.node.cjs
 npm run build
 cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
@@ -109,12 +120,12 @@ npm run desktop:build
 
 GitHub Actions 在 Windows 执行对应检查。CI 是否通过以实际 check run 为准，配置文件不等于运行成功。
 
-本次结果与隔离验证的复现命令见 `docs/verification.md`；合成预览见 `docs/screenshots/hud-preview.png`。
+当前 M2 的复现命令与结果见 `docs/m2-verification.md`；M1 历史见 `docs/verification.md`，合成预览见 `docs/screenshots/hud-preview.png`。
 
 ## 功能缺口（尚未实现）
 
-- Codex 审批 / 瞬时事件的实时补充入口，不能据解析 fixture 宣称 Waiting User 全覆盖。
-- Claude npm / Node 包装版、Transcript 遥测，以及完整 Hook 卸载流程；当前仅提供显式授权合并脚本和手工撤销说明。
+- Codex embedded / `--no-daemon` 及全部瞬时事件覆盖；只读共享 daemon 入口不是完整 Agent 事件订阅。
+- Claude npm / Node 包装版，以及 transcript 的更广版本兼容。
 - WSL 本地 Collector、完整终端映射、DPI / 多屏位置保存、开机启动和签名安装包。
 - 边缘磁吸、Git dirty / diff、复杂动画属于 P1，不在首批实现范围。
 

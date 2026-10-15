@@ -7,14 +7,14 @@ const template = JSON.parse(fs.readFileSync(path.join(__dirname, '../docs/claude
 const helper = 'C:/HUD Folder/agent-hud-hook.exe';
 
 test('preserves original settings and all existing hooks, and is idempotent', () => {
-  const original = { permissions: { allow: ['Read'] }, hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'existing-check' }] }], StopFailure: [] } };
+  const original = { permissions: { allow: ['Read'] }, hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'existing-check' }] }], Custom: [] } };
   const saved = structuredClone(original);
   const first = mergeHudHooks(original, template, helper);
   assert.deepEqual(original, saved);
   assert.deepEqual(first.settings.permissions, saved.permissions);
   assert.deepEqual(first.settings.hooks.PreToolUse[0], saved.hooks.PreToolUse[0]);
-  assert.deepEqual(first.settings.hooks.StopFailure, []);
-  assert.equal(first.added.length, 9);
+  assert.deepEqual(first.settings.hooks.Custom, []);
+  assert.equal(first.added.length, Object.keys(template.hooks).length);
   const second = mergeHudHooks(first.settings, template, helper);
   assert.deepEqual(second.added, []);
   assert.deepEqual(second.settings, first.settings);

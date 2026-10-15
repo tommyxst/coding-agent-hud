@@ -3,14 +3,14 @@ use std::{
     collections::{HashMap, HashSet},
     mem::{size_of, zeroed},
     os::windows::ffi::OsStrExt,
-    path::Path,
+    path::{Path, PathBuf},
     ptr,
     sync::OnceLock,
 };
 use windows_sys::Win32::{
     Foundation::{
-        CloseHandle, ERROR_MORE_DATA, ERROR_SUCCESS, HWND, INVALID_HANDLE_VALUE, LPARAM, LRESULT,
-        WPARAM,
+        CloseHandle, ERROR_MORE_DATA, ERROR_SUCCESS, FILETIME, HWND, INVALID_HANDLE_VALUE, LPARAM,
+        LRESULT, WPARAM,
     },
     Foundation::{GetLastError, SetLastError},
     System::{
@@ -22,13 +22,16 @@ use windows_sys::Win32::{
             RmEndSession, RmGetList, RmRegisterResources, RmStartSession, CCH_RM_SESSION_KEY,
             RM_PROCESS_INFO,
         },
-        Threading::{OpenProcess, WaitForSingleObject, INFINITE, PROCESS_SYNCHRONIZE},
+        Threading::{
+            GetProcessTimes, OpenProcess, QueryFullProcessImageNameW, WaitForSingleObject,
+            INFINITE, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
+        },
     },
     UI::{
         Input::KeyboardAndMouse::{VK_LMENU, VK_MENU, VK_RMENU},
         WindowsAndMessaging::{
             CallNextHookEx, EnumWindows, GetMessageW, GetWindowLongPtrW, GetWindowThreadProcessId,
-            IsWindowVisible, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos,
+            IsWindow, IsWindowVisible, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos,
             SetWindowsHookExW, ShowWindow, UnhookWindowsHookEx, GWL_EXSTYLE, HWND_TOP,
             KBDLLHOOKSTRUCT, MSG, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
             SWP_NOZORDER, SW_RESTORE, SW_SHOWNOACTIVATE, WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP,
@@ -242,32 +245,81 @@ pub fn codex_owner(path: &Path) -> Result<Option<u32>, String> {
     })
 }
 
+pub fn process_image(pid: u32) -> Result<PathBuf, String> {
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle.is_null() {
+            return Err("open process image failed".into());
+        }
+        // Windows' maximum extended path length, including its terminating NUL.
+        let mut buffer = vec![0u16; 32768];
+        let mut length = buffer.len() as u32;
+        let result = QueryFullProcessImageNameW(handle, 0, buffer.as_mut_ptr(), &mut length);
+        CloseHandle(handle);
+        if result == 0 {
+            return Err("query process image failed".into());
+        }
+        Ok(PathBuf::from(
+            String::from_utf16(&buffer[..length as usize])
+                .map_err(|_| "invalid process image path")?,
+        ))
+    }
+}
+
+pub fn process_started_at(pid: u32) -> Result<u64, String> {
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle.is_null() {
+            return Err(format!(
+                "query process {pid}: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+        let mut created: FILETIME = zeroed();
+        let mut exited: FILETIME = zeroed();
+        let mut kernel: FILETIME = zeroed();
+        let mut user: FILETIME = zeroed();
+        let result = GetProcessTimes(handle, &mut created, &mut exited, &mut kernel, &mut user);
+        let error = std::io::Error::last_os_error();
+        CloseHandle(handle);
+        if result == 0 {
+            return Err(format!("read process {pid} identity: {error}"));
+        }
+        Ok((u64::from(created.dwHighDateTime) << 32) | u64::from(created.dwLowDateTime))
+    }
+}
+
 struct WindowQuery {
     pid: u32,
-    window: HWND,
+    windows: Vec<usize>,
 }
 unsafe extern "system" fn enum_window(window: HWND, parameter: LPARAM) -> i32 {
     let query = &mut *(parameter as *mut WindowQuery);
     let mut pid = 0;
     GetWindowThreadProcessId(window, &mut pid);
     if pid == query.pid && IsWindowVisible(window) != 0 {
-        query.window = window;
-        return 0;
+        query.windows.push(window as usize);
     }
     1
 }
-fn visible_window(pid: u32) -> Option<HWND> {
+fn visible_windows(pid: u32) -> Result<Vec<usize>, String> {
     let mut query = WindowQuery {
         pid,
-        window: ptr::null_mut(),
+        windows: Vec::new(),
     };
-    unsafe {
-        EnumWindows(Some(enum_window), &mut query as *mut WindowQuery as LPARAM);
+    if unsafe { EnumWindows(Some(enum_window), &mut query as *mut WindowQuery as LPARAM) } == 0 {
+        return Err(format!(
+            "enumerate terminal windows: {}",
+            std::io::Error::last_os_error()
+        ));
     }
-    if query.window.is_null() {
-        None
-    } else {
-        Some(query.window)
+    Ok(query.windows)
+}
+
+fn unique_window(windows: &[usize]) -> Option<usize> {
+    match windows {
+        [window] => Some(*window),
+        _ => None,
     }
 }
 
@@ -280,34 +332,90 @@ const TERMINALS: &[&str] = &[
     "wezterm-gui.exe",
     "alacritty.exe",
     "conemu64.exe",
+    "code.exe",
+    "code - insiders.exe",
 ];
 
 pub fn workspace(agent_pid: u32) -> Result<Workspace, String> {
     let parent_chain = ancestors(agent_pid, &processes()?);
-    let terminal = parent_chain.into_iter().find(|(pid, name)| {
-        TERMINALS.contains(&name.to_ascii_lowercase().as_str()) && visible_window(*pid).is_some()
-    });
-    let (terminal_pid, terminal_type) = match terminal {
-        Some((pid, name)) => (Some(pid), Some(name)),
-        None => (None, None),
-    };
-    Ok(Workspace {
+    let mut workspace = Workspace {
         agent_pid,
-        terminal_pid,
-        terminal_type,
-    })
+        terminal_pid: None,
+        terminal_type: None,
+        terminal_window: None,
+        terminal_started_at: None,
+        binding_error: None,
+    };
+    let mut child_started = None;
+    for (pid, name) in parent_chain {
+        let started = match process_started_at(pid) {
+            Ok(started) => started,
+            Err(error) => {
+                workspace.binding_error = Some(format!("无法验证 Terminal 祖先链：{error}"));
+                break;
+            }
+        };
+        // A later-created parent is a reused PID, not evidence of this agent's UI host.
+        if child_started.is_some_and(|child| started > child) {
+            workspace.binding_error = Some("Terminal 祖先 PID 已重用；无法确认工作现场".into());
+            break;
+        }
+        child_started = Some(started);
+        if !TERMINALS.contains(&name.to_ascii_lowercase().as_str()) {
+            continue;
+        }
+        let windows = visible_windows(pid)?;
+        if windows.is_empty() {
+            continue;
+        }
+        let Some(window) = unique_window(&windows) else {
+            workspace.binding_error = Some("Terminal 进程有多个窗口；无法唯一确认工作现场".into());
+            break;
+        };
+        workspace.terminal_pid = Some(pid);
+        workspace.terminal_type = Some(name);
+        workspace.terminal_window = Some(window);
+        workspace.terminal_started_at = Some(started);
+        break;
+    }
+    Ok(workspace)
+}
+
+fn workspace_window(workspace: &Workspace) -> Result<HWND, String> {
+    let pid = match workspace.terminal_pid {
+        Some(pid) => pid,
+        None => {
+            return Err(match &workspace.binding_error {
+                Some(error) => error.clone(),
+                None => "未绑定可靠的 Terminal 窗口；请从任务栏返回工作现场".into(),
+            })
+        }
+    };
+    let processes = processes()?;
+    let (_, name) = processes.get(&pid).ok_or("已绑定的 Terminal 进程已退出")?;
+    if Some(name) != workspace.terminal_type.as_ref()
+        || Some(process_started_at(pid)?) != workspace.terminal_started_at
+    {
+        return Err("Terminal 进程身份已变化；拒绝唤醒其他窗口".into());
+    }
+    let window = workspace
+        .terminal_window
+        .ok_or("未保存可靠的 Terminal 窗口身份")? as HWND;
+    let mut owner = 0;
+    unsafe {
+        if IsWindow(window) == 0 || IsWindowVisible(window) == 0 {
+            return Err("原 Terminal 窗口已关闭或不可见；不会选择其他窗口".into());
+        }
+        GetWindowThreadProcessId(window, &mut owner);
+    }
+    if owner != pid {
+        return Err("Terminal 窗口所有者已变化；拒绝唤醒其他窗口".into());
+    }
+    Ok(window)
 }
 
 pub fn return_to_workspace(workspace: &Workspace) -> Result<(), String> {
-    let pid = workspace
-        .terminal_pid
-        .ok_or("未绑定可靠的 Terminal 窗口；请从任务栏返回工作现场")?;
-    let processes = processes()?;
-    let (_, name) = processes.get(&pid).ok_or("已绑定的 Terminal 进程已退出")?;
-    if Some(name) != workspace.terminal_type.as_ref() {
-        return Err("Terminal 进程身份已变化；拒绝唤醒其他窗口".into());
-    }
-    let window = visible_window(pid).ok_or("Terminal 没有可唤醒的窗口")?;
+    let window = workspace_window(workspace)?;
     unsafe {
         ShowWindow(window, SW_RESTORE);
         if SetForegroundWindow(window) == 0 {
@@ -483,5 +591,104 @@ mod window_style_tests {
         ] {
             assert_ne!(style & required as isize, 0);
         }
+    }
+}
+
+#[cfg(test)]
+mod workspace_tests {
+    use super::*;
+    #[test]
+    fn only_one_observed_window_is_bindable() {
+        assert_eq!(unique_window(&[]), None);
+        assert_eq!(unique_window(&[123]), Some(123));
+        assert_eq!(unique_window(&[123, 456]), None);
+    }
+    #[test]
+    fn process_creation_time_is_stable_and_native_identity_is_not_sent_to_frontend() {
+        let pid = std::process::id();
+        assert_eq!(
+            process_started_at(pid).unwrap(),
+            process_started_at(pid).unwrap()
+        );
+        let binding = workspace(pid).unwrap();
+        let serialized = serde_json::to_string(&binding).unwrap();
+        assert!(!serialized.contains("terminalWindow"));
+        assert!(!serialized.contains("terminalStartedAt"));
+        assert!(!serialized.contains("bindingError"));
+    }
+    #[test]
+    fn stale_process_and_window_identities_are_rejected_before_activation() {
+        let pid = std::process::id();
+        let name = processes().unwrap()[&pid].1.clone();
+        let started = process_started_at(pid).unwrap();
+        let mut binding = Workspace {
+            agent_pid: pid,
+            terminal_pid: Some(pid),
+            terminal_type: Some(name),
+            terminal_started_at: Some(started + 1),
+            terminal_window: Some(0),
+            binding_error: None,
+        };
+        assert!(workspace_window(&binding)
+            .unwrap_err()
+            .contains("进程身份已变化"));
+        binding.terminal_started_at = Some(started);
+        assert!(workspace_window(&binding)
+            .unwrap_err()
+            .contains("已关闭或不可见"));
+        binding.terminal_window = None;
+        assert!(workspace_window(&binding).unwrap_err().contains("未保存"));
+    }
+    #[test]
+    fn captured_hwnd_never_retargets_to_a_second_window() {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            CreateWindowExW, DestroyWindow, WS_POPUP, WS_VISIBLE,
+        };
+        struct FixtureWindow(HWND);
+        impl Drop for FixtureWindow {
+            fn drop(&mut self) {
+                unsafe {
+                    DestroyWindow(self.0);
+                }
+            }
+        }
+        fn create() -> FixtureWindow {
+            let class: Vec<u16> = "STATIC".encode_utf16().chain(Some(0)).collect();
+            let window = unsafe {
+                CreateWindowExW(
+                    WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
+                    class.as_ptr(),
+                    ptr::null(),
+                    WS_POPUP | WS_VISIBLE,
+                    -32000,
+                    -32000,
+                    1,
+                    1,
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                    ptr::null(),
+                )
+            };
+            assert!(!window.is_null());
+            FixtureWindow(window)
+        }
+        let pid = std::process::id();
+        let first = create();
+        let binding = Workspace {
+            agent_pid: pid,
+            terminal_pid: Some(pid),
+            terminal_type: Some(processes().unwrap()[&pid].1.clone()),
+            terminal_window: Some(first.0 as usize),
+            terminal_started_at: Some(process_started_at(pid).unwrap()),
+            binding_error: None,
+        };
+        assert_eq!(workspace_window(&binding).unwrap(), first.0);
+        let second = create();
+        assert!(unique_window(&visible_windows(pid).unwrap()).is_none());
+        assert_eq!(workspace_window(&binding).unwrap(), first.0);
+        drop(first);
+        assert!(workspace_window(&binding).is_err());
+        assert_ne!(binding.terminal_window, Some(second.0 as usize));
     }
 }

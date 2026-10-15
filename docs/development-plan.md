@@ -7,7 +7,7 @@
 首次开发前已调用 Pi Advisor。顾问认可 Tauri 2 + Rust + WebView 路线，建议先实现真实 Windows 会话的最小闭环，再扩展完整 MVP。
 
 - UI 只消费统一 Session Model，不直接解析 Agent 文件。
-- Activity 与 Attention 独立。`PreToolUse` 表示工具调用，不表示等待审批；Claude 使用 `PermissionRequest` 或明确的 Notification。
+- Activity 与 Attention 独立。`PreToolUse` 表示工具调用，不表示等待审批；M2 将 Claude `PermissionRequest` 收敛为候选，明确 `permission_prompt` 才确认可见审批，不能靠前置 Hook 或超时猜人工等待。
 - 不把历史 rollout 当活跃会话；必须验证文件的实际持有进程，并在进程结束时清理。
 - 不从累计 token 推测 Context。缺失的模型、容量、终端绑定显示未知。
 - 界面预览和真实采集严格分离。浏览器预览必须标记演示模式。
@@ -28,16 +28,15 @@
 
 验收：前端类型检查、单元测试、Rust 测试/静态检查、Windows 构建、浏览器交互测试，以及真实采集入口的本地检查。不能用模拟数据通过真实自动发现验收。
 
-### M2：Agent 集成可靠性
+### M2：Agent 集成可靠性（A / B / C）
 
-- 在真实交互式 Claude / Codex 会话验证所有状态和工具事件。
-- Claude Transcript 只读遥测补充，模型、输入/输出 token、Context 只取真实可用字段。
-
-- 已核对 Codex 0.162.1 的 `codex-rs/rollout/src/policy.rs`：审批请求和部分瞬时工具/错误事件不写入 rollout。rollout-only 不能通过 Waiting User 的完整验收；M2 必须确定官方实时事件补充入口，不靠超时推测。
-- Codex Context 使用最近一次模型请求用量并显式标记估算，不使用累计 Token；compaction 后等待新统计。
-- 已提供保留原配置、原始字节备份和幂等合并的显式 Hook 配置脚本；完整卸载流程及更广版本集成继续在 M2 验证。
-- 改进 Windows Terminal / VS Code 集成终端映射；仍只保证窗口级返回，不承诺 tab 精确定位。
-- 验证 HUD 启动前已经运行的会话、resume、多个会话、并行工具调用和退出清理。
+- **M2-A 已实施**：固定 Codex 0.162.1 与 Claude Code 2.1.296 的来源核对，覆盖和排除理由见 `m2-event-coverage.md`。Codex PermissionRequest Hook 不直接等于人工等待。
+- **M2-B 已实施**：Codex 已有共享 daemon 的只读全局状态叠加 rollout；不订阅审批、不启动服务。Claude 异步 transcript 白名单遥测、去重、compaction、生命周期清理，以及精确命令卸载脚本。
+- **M2-C 已实施**：唯一可见祖先窗口绑定；返回前复核 HWND / PID / 名称 / 创建时间；不猜 ConPTY、标题、cwd 或 tab，关闭的原窗口不重选。
+- 回归包括启动前历史抑制、resume、多会话、并行返回、文件等长替换、晚事件、实时状态竞态、断线和代理进程清理。
+- 检查、Release 构建和隔离原生结果见 `m2-verification.md`。真实交互式 Agent、真实 helper / daemon、人工审批及各终端返回仍需单独授权和实测。
+- 共享 daemon 不能覆盖 embedded / `--no-daemon`，且不提供全部工具 / 回复 / 瞬时错误；不得把 M2 开发版当完整实时验收。
+- Context 保留缺失语义和估算标记；不用累计 Token 猜容量。Hook 升级 / 卸载不会自动修改用户配置。
 
 ### M3：WSL 与产品化
 

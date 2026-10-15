@@ -57,6 +57,27 @@ pub struct Session {
     pub workspace: Option<Workspace>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub recent_tools: Vec<ToolObservation>,
+    #[serde(skip)]
+    pub running_tools: std::collections::BTreeMap<String, String>,
+    #[serde(skip)]
+    pub hook_waiting: HookWaiting,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct HookWaiting {
+    pub permission_tools: std::collections::BTreeSet<String>,
+    pub uncorrelated_permission: bool,
+    pub permission_visible: bool,
+    pub elicitations: usize,
+    pub prompt: bool,
+}
+impl HookWaiting {
+    pub fn pending(&self) -> bool {
+        (self.permission_visible
+            && (!self.permission_tools.is_empty() || self.uncorrelated_permission))
+            || self.elicitations > 0
+            || self.prompt
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -129,6 +150,12 @@ pub struct Workspace {
     pub terminal_pid: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub terminal_type: Option<String>,
+    #[serde(skip)]
+    pub terminal_window: Option<usize>,
+    #[serde(skip)]
+    pub terminal_started_at: Option<u64>,
+    #[serde(skip)]
+    pub binding_error: Option<String>,
 }
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct CollectorStatus {
@@ -187,6 +214,8 @@ impl Session {
             tokens: None,
             workspace: None,
             recent_tools: Vec::new(),
+            running_tools: std::collections::BTreeMap::new(),
+            hook_waiting: HookWaiting::default(),
         }
     }
 

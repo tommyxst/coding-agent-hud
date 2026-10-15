@@ -1,6 +1,6 @@
 # M1 开发版验证记录
 
-最新 2026-10-15 窗口恢复修复、托盘操作变化及构建输出见 `docs/window-recovery-verification.md`；下文保留上一轮记录。
+M2 当前实现与 2026-10-15 的联合验证见 `docs/m2-verification.md`；窗口恢复历史见 `docs/window-recovery-verification.md`。下文保留 M1 当时记录，不代表当前功能缺口。
 本文保留各轮修复完成时的记录；后续提交、主干同步与 CI 状态以 Git 历史和对应提交的检查结果为准。
 
 ## 本轮验收修复：2026-10-14
