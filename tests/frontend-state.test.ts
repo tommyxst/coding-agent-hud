@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createDemoSnapshot } from '../src/demo';
 import { DEFAULT_SETTINGS } from '../src/model';
 import type { AgentSession } from '../src/model';
-import { automaticMode, contextReading, displayedAttention, expireDone, formatContextPercent, formatCount, resolveMode, needsInteraction, nextDoneDelay, primarySession, rankSessions, reconcileDone, reconcileSelection, selectSession, togglePin } from '../src/state';
+import { automaticMode, contextReading, displayedAttention, expireDone, formatContextPercent, formatCount, resolveMode, needsInteraction, nextDoneDelay, primarySession, rankSessions, reconcileDone, reconcileSelection, selectSession, togglePin, safeActionSummary, stateLabel } from '../src/state';
 
 const auto = { selectedId: null, pinnedId: null };
 const fixture = () => createDemoSnapshot(200000).sessions;
@@ -145,5 +145,29 @@ describe('manual view is scoped to the session, not its changing activity', () =
   });
   it('does not apply another session’s manual view', () => {
     expect(resolveMode(fixture()[0], {}, { key: 'other', mode: 'expanded' })).toBe('active');
+  });
+});
+
+describe('turn end semantics and snapshot reconciliation', () => {
+  it.each([false, true])('turn end does not claim task acceptance with details=%s', showDetail => {
+    const session = attention(fixture()[0], 'DONE');
+    expect(safeActionSummary(session, showDetail)).toBe('本轮已结束');
+    expect(stateLabel(session, {})).toBe('Ended');
+  });
+  it('duplicate and late background snapshots preserve manual choice without replaying an expired end', () => {
+    const sessions = fixture();
+    sessions[1] = attention(sessions[1], 'DONE');
+    const selection = selectSession(auto, sessions[0].id);
+    const done = expireDone(reconcileDone({}, sessions, 1000), 8000, 7000);
+    for (const updatedAt of [sessions[1].runtime.updatedAt, 1]) {
+      sessions[1] = { ...sessions[1], runtime: { ...sessions[1].runtime, updatedAt } };
+      const next = reconcileDone(done, sessions, 9000);
+      expect(next).toEqual(done);
+      expect(nextDoneDelay(next, 9000, 7000)).toBeNull();
+      expect(primarySession(sessions, reconcileSelection(selection, sessions), next)?.id).toBe(sessions[0].id);
+    }
+    expect(reconcileSelection(selection, [])).toEqual(auto);
+    expect(reconcileDone(done, [], 9000)).toEqual({});
+    expect(primarySession([], auto, {})).toBeUndefined();
   });
 });

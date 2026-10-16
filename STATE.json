@@ -1,7 +1,46 @@
 {
   "version": 1,
-  "task": null,
-  "status": "idle",
+  "task": "lightweight-windows-loop",
+  "status": "working",
+  "goal": "执行批准轻量 HUD 计划第一批：本轮结束语义、证据驱动空态/采集诊断与 Windows 核心闭环验证",
+  "criteria": [
+    "Done 在前后端和示例中只表达本轮结束；空态区分 HUD 连接、采集就绪、等待 Hook 验证与已知限制，不猜安装/会话事实",
+    "补充回归并通过前端检查、受影响 Rust 检查、Release 与隔离原生验证，保留手选/Auto、及时移除和拒绝误唤醒",
+    "在授权范围记录真实 Claude 2.1.296 / Codex 0.163.0 的实际入口、状态及终端验证结果；未覆盖项/阻塞保持未验收，不称完整第一批通过",
+    "README 与阶段设计同步批准的轻量路线，保留原 PRD 和历史验证记录"
+  ],
+  "scope": [
+    "src/",
+    "tests/",
+    "src-tauri/src/hooks.rs",
+    "src-tauri/src/codex.rs",
+    "src-tauri/src/collector.rs",
+    "src-tauri/src/codex_live.rs",
+    "src-tauri/src/native.rs",
+    "scripts/verify-native.cjs",
+    "scripts/verify-window.ps1",
+    "docs/",
+    "README.md",
+    "STATE.json",
+    "changes/"
+  ],
+  "constraints": [
+    "仅第一批，不实现 WSL、安装、通知收件箱或新增设置/管理页面",
+    "不新增升级依赖，不暂存提交推送合并；保留宿主 .pi/ 文件和其他用户修改",
+    "真实验收限 scratch 可丢弃目录、新建专用终端，Claude/Codex 各最多 6 轮；不改个人全局配置、不自动审批、不操作现有会话或 daemon",
+    "真实 transcript、密钥、正文及构建产物不得进入仓库；未知与未验收如实记录"
+  ],
+  "current": "第一批实现与文档完成：前端84/Rust73/Clippy/Release/25组原生/窗口smoke通过；真实Claude已用2次、Codex已用3次（各上限6）。双会话、Claude resume和退出清理已观察；完整交互验收未通过，保持working、不关闭",
+  "next": [
+    "补齐用户实际点击终端前置，以及真实TUI Waiting/人工审批解除、共享daemon与VSCode验证；现有授权剩余Claude4次、Codex3次，不自动审批",
+    "若真实复现产品缺陷，仅修本批缺陷并复验；证据齐全后登记verify/close，不提前进入第二批",
+    "未经用户新指示不暂存、提交、推送或合并"
+  ],
+  "blocked": [
+    "专用PowerShell绑定成功，但自动返回IPC两次被Windows前台权限拒绝；成功前置需要真实用户点击验收",
+    "非交互print/exec不覆盖人工审批/解除；共享daemon与VSCode交互仍缺真实证据"
+  ],
   "followUp": null,
-  "current": "Waiting for human direction; do not invent work."
+  "change": "changes/active/lightweight-windows-loop",
+  "layer": "docs"
 }

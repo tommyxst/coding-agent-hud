@@ -75,3 +75,11 @@ Claude 官方文档：`https://code.claude.com/docs/en/hooks`、`https://code.cl
 3. **真实交互未验收**：真实 Claude helper 执行、真实 daemon 互通、审批 / 输入交互、模型遥测、不同终端返回及性能测量。
 
 **结论：允许交付 M2 开发版，不允许宣称完整实时事件覆盖或整个 MVP 已验收。** 真实模型调用、用户配置变更仍需单独授权；源码和夹具结果不能替代该验收。
+
+## 2026-10-16 轻量第一批补充
+
+以上 M2 的固定版本与历史结论保持不变。当前 CLI 只读探测为 Claude Code 2.1.296、Codex 0.163.0；0.163.0 不自动继承 0.162.1 的协议验收。
+
+Claude Stop 与 Codex task_complete / turn_complete 对内仍映射 DONE，对外改为本轮已结束 / Ended，不能证明任务验收。Claude 首个已验证 Hook 前明确为 waiting，Codex proxy 握手前为 connecting；HUD 连接成功与 Agent 接入分开。
+
+本轮实际自动与真实 CLI 证据见 `windows-loop-verification.md`：已观察原生 Claude Hook、Codex 0.163.0 rollout、双 Agent 并行与 Claude 显式 resume。非交互 print / exec 不能证明人工审批 / 解除或真实共享 daemon；专用终端返回被 Windows 前台权限拒绝，成功前置仍待实测。

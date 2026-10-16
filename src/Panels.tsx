@@ -49,9 +49,9 @@ export function SettingsPanel({ settings, disabled, native, onChange, onReset, o
             onChange={event => onChange({ ...settings, opacity: Number(event.target.value) / 100 })}/>
         </label>
         <label className="setting-select">
-          <span>Done 展示时间</span>
+          <span>本轮结束提示时间</span>
           <input type="number" min={DONE_DISPLAY_MIN / 1000} max={DONE_DISPLAY_MAX / 1000} step="1"
-            value={settings.doneDisplayMs / 1000} aria-label="Done 展示秒数"
+            value={settings.doneDisplayMs / 1000} aria-label="本轮结束提示秒数"
             onChange={event => {
               if (event.target.validity.valid && event.target.value !== '') {
                 onChange({ ...settings, doneDisplayMs: Number(event.target.value) * 1000 });
@@ -70,9 +70,15 @@ export function SettingsPanel({ settings, disabled, native, onChange, onReset, o
 
 const collectorLabels: Record<CollectorStatus['state'], string> = {
   watching: 'Watching', unavailable: 'Unavailable', warning: 'Warning', error: 'Error',
+  waiting: '等待验证', connecting: '连接中',
 };
 const collectorNames: Record<CollectorStatus['agent'], string> = {
   claude: 'Claude Code', codex: 'Codex', 'codex-live': 'Codex 实时', 'window-placement': '窗口位置',
+};
+const collectorLimits: Partial<Record<CollectorStatus['agent'], string>> = {
+  claude: '支持范围：原生 claude.exe；npm / Node 包装版与 WSL 尚未支持。',
+  codex: 'rollout 仅覆盖已保存事件；历史文件须验证活跃持有进程。',
+  'codex-live': '仅覆盖同一 CODEX_HOME 的已有共享 daemon；embedded / --no-daemon 不在实时连接范围内。',
 };
 interface CollectorProps {
   collectors: CollectorStatus[];
@@ -91,7 +97,7 @@ export function CollectorPanel({ collectors, native, connection, onClose, onRetr
       <p className="panel-description">{native
         ? connection === 'loading' ? '正在注册事件并读取快照…'
           : connection === 'error' ? 'Native 连接失败；下方保留最后收到的 collector 状态。'
-            : '来自本地 native 的最新采集状态。'
+            : 'HUD 已连接，不代表 Agent 已接入；以下按各采集入口的实际证据显示。'
         : 'DEMO · 浏览器没有连接任何 collector。'}</p>
       {collectors.length === 0 ? <p className="collector-empty">尚未收到 collector 状态。</p> : (
         <ul className="collector-list">
@@ -103,6 +109,7 @@ export function CollectorPanel({ collectors, native, connection, onClose, onRetr
                 <span className={`collector-state collector-${collector.state} mono`}>{collectorLabels[collector.state]}</span>
               </div>
               <p>{collector.message}</p>
+              {native && collectorLimits[collector.agent] ? <p>{collectorLimits[collector.agent]}</p> : null}
             </li>
           ))}
         </ul>
@@ -112,4 +119,36 @@ export function CollectorPanel({ collectors, native, connection, onClose, onRetr
       </button> : null}
     </section>
   );
+}
+
+export function EmptyState({ native, connection, collectors }: Pick<CollectorProps, 'native' | 'connection' | 'collectors'>) {
+  const agents = collectors.filter(collector => collector.agent !== 'window-placement');
+  let title: string;
+  let message: string;
+  if (!native) {
+    title = '没有演示会话';
+    message = 'DEMO 空状态；在下方重置示例会话。';
+  } else if (connection === 'loading') {
+    title = '正在连接本地 HUD…';
+    message = '正在注册事件并读取快照；尚不能判断 Agent 状态。';
+  } else if (connection === 'error') {
+    title = '无法读取采集状态';
+    message = 'HUD 连接失败，不代表 Agent 已退出；请查看连接错误后重试。';
+  } else if (agents.length === 0) {
+    title = '等待采集状态';
+    message = 'HUD 已连接，尚未收到 Agent 采集入口状态。';
+  } else if (agents.some(collector => collector.state === 'error' || collector.state === 'unavailable')) {
+    title = '部分采集入口不可用';
+    message = '尚无可确认的活跃会话；请查看 Collector 状态中的原因与支持范围。';
+  } else if (agents.some(collector => collector.agent === 'claude' && collector.state === 'waiting')) {
+    title = '等待 Hook 验证';
+    message = '尚未收到已验证的 Claude Hook；请检查接入并启动新会话。';
+  } else if (agents.some(collector => collector.state === 'connecting')) {
+    title = '正在连接采集入口';
+    message = 'HUD 已连接；采集连接结果请查看 Collector 状态。';
+  } else {
+    title = '未发现可确认的活跃会话';
+    message = '仅显示已验证来源的会话；采集能力与限制见 Collector 状态。';
+  }
+  return <section className="empty-card" aria-label="无会话"><span className="empty-symbol"><Icon name="terminal"/></span><div><strong>{title}</strong><p>{message}</p></div></section>;
 }

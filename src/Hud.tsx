@@ -65,13 +65,13 @@ function DetailDrawer({ session, settings }: { session: AgentSession; settings: 
   return <section id="session-details" className="detail-drawer" aria-label="会话详情"><dl className="detail-grid">{rows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd className="mono">{value}</dd></div>)}</dl><p className="detail-note">— 表示未知；缓存比例与 Git diff 不在当前数据契约中，不推算。</p></section>;
 }
 
-const attentionTitles = { WAITING_USER: 'WAITING FOR YOU', ERROR: 'SESSION ERROR', DONE: 'TASK COMPLETED', NONE: 'ATTENTION VIEW' };
+const attentionTitles = { WAITING_USER: 'WAITING FOR YOU', ERROR: 'SESSION ERROR', DONE: 'TURN ENDED', NONE: 'ATTENTION VIEW' };
 function AttentionBanner({ session, settings, done, onReturn, returning }: { session: AgentSession; settings: HudSettings; done: DoneRecords; onReturn: () => void; returning: boolean }) {
   const attention = displayedAttention(session, done);
   const summary = settings.showCommandDetail && session.attention.message
     ? session.attention.message : attention === 'WAITING_USER' ? '需要确认；请返回工作区继续。'
       : attention === 'ERROR' ? '会话遇到错误；请返回工作区查看。'
-        : attention === 'DONE' ? '任务已完成，将自动收起。' : '当前没有需要处理的 Attention 事件。';
+        : attention === 'DONE' ? '本轮已结束；结果请回工作区确认。' : '当前没有需要处理的 Attention 事件。';
   return <div className={`attention-banner attention-${attention.toLowerCase()}`} role="status"><div className="attention-title mono"><Icon name={attention === 'DONE' ? 'check' : attention === 'ERROR' ? 'error' : 'terminal'}/>{attentionTitles[attention]}</div><p>{summary}</p>{attention === 'WAITING_USER' || attention === 'ERROR' ? <button className="return-action" onClick={onReturn} disabled={returning}>{returning ? '正在返回…' : '返回工作区'}<Icon name="arrow"/></button> : null}</div>;
 }
 

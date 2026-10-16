@@ -81,7 +81,7 @@ impl CodexObserver {
             status(
                 shared,
                 "codex-live",
-                "watching",
+                "connecting",
                 "正在连接已有 Codex daemon；不会启动服务或 Agent",
             )?;
             return Ok(());
@@ -264,8 +264,8 @@ fn collect(app: &AppHandle, shared: &Shared) -> Result<(), String> {
     status(
         shared,
         "claude",
-        "watching",
-        "等待首个 HUD Hook 事件；入口就绪不代表已接入。请配置 Hook 并启动新 Claude 会话",
+        "waiting",
+        "等待首个已验证 HUD Hook 事件；尚不能确认接入。请检查 Hook 配置并启动新 Claude 会话",
     )?;
     let watch_root = if directory.is_dir() {
         Some(directory.clone())

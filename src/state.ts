@@ -147,7 +147,7 @@ export const ACTIVITY_LABELS: Record<AgentSession['runtime']['state'], string> =
   STARTING: 'Starting', IDLE: 'Idle', THINKING: 'Thinking', TOOL_RUNNING: 'Running', RESPONDING: 'Responding',
 };
 export const ATTENTION_LABELS: Record<Exclude<AttentionState, 'NONE'>, string> = {
-  WAITING_USER: 'Waiting', ERROR: 'Error', DONE: 'Done',
+  WAITING_USER: 'Waiting', ERROR: 'Error', DONE: 'Ended',
 };
 export function stateLabel(session: AgentSession, done: DoneRecords): string {
   const attention = displayedAttention(session, done);
@@ -155,8 +155,8 @@ export function stateLabel(session: AgentSession, done: DoneRecords): string {
   return session.attention.state === 'DONE' ? 'Idle' : ACTIVITY_LABELS[session.runtime.state];
 }
 export function safeActionSummary(session: AgentSession, showDetail: boolean): string {
+  if (session.attention.state === 'DONE') return '本轮已结束';
   if (showDetail && session.runtime.detail) return session.runtime.detail;
-  if (session.attention.state === 'DONE') return '任务已完成';
   switch (session.runtime.state) {
     case 'TOOL_RUNNING': return '正在执行工具 · 具体内容已隐藏';
     case 'THINKING': return '正在推理';

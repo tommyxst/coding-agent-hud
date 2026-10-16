@@ -18,7 +18,7 @@ export interface AgentSession {
 
 export interface CollectorStatus {
   agent: 'claude' | 'codex' | 'codex-live' | 'window-placement';
-  state: 'watching' | 'unavailable' | 'warning' | 'error';
+  state: 'waiting' | 'connecting' | 'watching' | 'unavailable' | 'warning' | 'error';
   message: string;
 }
 

@@ -199,7 +199,7 @@ impl HookEvent {
             HookKind::Stop => {
                 s.running_tools.clear();
                 s.hook_waiting = Default::default();
-                s.attention(AttentionState::Done, "Task completed", self.timestamp);
+                s.attention(AttentionState::Done, "Turn ended", self.timestamp);
             }
             HookKind::SessionEnd => return true,
             HookKind::PreCompact | HookKind::PostCompact => s.context = None,
@@ -278,6 +278,29 @@ mod tests {
         assert_eq!(s.attention.state, AttentionState::None);
     }
     #[test]
+    fn repeated_stop_is_idempotent_and_old_stop_cannot_end_a_new_turn() {
+        let mut event = HookEvent::from_input(
+            br#"{"hook_event_name":"Stop","session_id":"test","cwd":"C:/demo"}"#,
+            123,
+        )
+        .unwrap();
+        event.timestamp = 10;
+        let mut session = Session::new("claude", "test", "C:/demo", 0);
+        event.apply(&mut session);
+        let ended = session.clone();
+        event.apply(&mut session);
+        assert_eq!(session, ended);
+        event.kind = HookKind::UserPromptSubmit;
+        event.timestamp = 20;
+        event.apply(&mut session);
+        let active = session.clone();
+        event.kind = HookKind::Stop;
+        event.timestamp = 10;
+        event.apply(&mut session);
+        assert_eq!(session, active);
+        assert_eq!(session.attention.state, AttentionState::None);
+    }
+    #[test]
     fn explicit_permission_and_end() {
         let mut event = HookEvent::from_input(
             br#"{"hook_event_name":"PermissionRequest","session_id":"test","cwd":"C:/demo"}"#,
@@ -291,6 +314,10 @@ mod tests {
         event.notification_type = Some("permission_prompt".into());
         event.apply(&mut s);
         assert_eq!(s.attention.state, AttentionState::WaitingUser);
+        event.kind = HookKind::Stop;
+        event.apply(&mut s);
+        assert_eq!(s.attention.state, AttentionState::Done);
+        assert_eq!(s.attention.message.as_deref(), Some("Turn ended"));
         event.kind = HookKind::SessionEnd;
         assert!(event.apply(&mut s));
     }

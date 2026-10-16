@@ -1,8 +1,8 @@
 # Coding Agent HUD
 
-面向 Windows 的本地 Coding Agent 状态悬浮窗，观察 Claude Code 和 Codex，不接管模型调用、任务执行或权限审批。
+面向 Windows 的轻量本地 Coding Agent HUD：看状态、需要介入时提示、快速回到终端。观察 Claude Code 和 Codex，不接管模型调用、任务执行或权限审批。
 
-**状态：M3-A 开发版，窗口位置保存与隔离原生回归已完成；物理多屏、真实 Agent 和完整 MVP 尚未验收。** M3 分批与 WSL 方案见 `docs/m3-design.md`，本轮结果见 `docs/m3-verification.md`；原始需求见 `Coding Agent HUD 产品需求文档 MVP.md`。
+**状态：M3-A 与轻量第一批开发版；真实交互式 Agent、物理多屏和完整 MVP 尚未验收。** 当前范围按 2026-10-16 批准的轻量计划收敛；路线见 `docs/development-plan.md`、`docs/m3-design.md`，本轮证据见 `docs/windows-loop-verification.md`。原始 PRD 保留作历史依据。
 
 ## 开发启动
 
@@ -39,13 +39,14 @@ npm run dev
 
 ## 窗口操作
 
-- **图钉**只切换窗口置顶，不固定主会话；会话 Pin 功能延期。点其他会话可手选，点 **Auto** 恢复自动排序。
+- **图钉**只切换窗口置顶；不新增会话 Pin。点其他会话可手选，点 **Auto** 恢复自动排序。
 - 被 Win+D、最小化或其他窗口遮住后，单击系统托盘图标恢复；不会因此重新开启置顶。后台采集更新不主动恢复被最小化的 HUD。
 - 按住左侧 **拖动窗口**柄拖动。穿透时先按住 Alt 或通过托盘恢复交互；DEMO 不移动桌面窗口。
 - **HUD 设置 → 界面字号**可选 12–20 px，默认正文 15 px、辅助文字 14 px。旧设置保留隐私及外观偏好。
-- 展开详情后，Activity 更新不会折叠；Waiting / Error / Done 仍立即提示。切换、移除会话或主动收起才清除该详情意图。
+- 展开详情后，Activity 更新不会折叠；Waiting / Error / Ended 仍立即提示。**Ended / 本轮已结束**仅表示采集到本轮结束事件，不表示用户任务已验收；提示时长沿用原设置。
 - 粒子动画从当前位置切换方向，不排队重播状态；Idle / Attention / 会话移除立即停止。应用或系统减少动态效果、键盘操作、窗口隐藏也停止动画。
 - 原生位置自动保存在 `%APPDATA%/dev.tommyxst.coding-agent-hud/window-position.json`，不保存会话。屏幕移除时明确提示并恢复主屏；再次连接后需手动拖回。配置损坏时显示 **Collector 状态 → 窗口位置** 错误，保留原文件并禁用本次保存；退出后修复或删除该文件再重启。
+- HUD 已连接不等于 Agent 已接入。空态区分连接失败、采集入口不可用、等待 Hook 验证和未发现可确认会话；**Collector 状态**显示各入口实际证据与支持范围，不据此猜 Hook 是否安装。
 
 ## Codex 采集
 
@@ -130,7 +131,7 @@ M3-A 的复现命令、截图与边界见 `docs/m3-verification.md`，分批与 
 - Codex embedded / `--no-daemon` 及全部瞬时事件覆盖；只读共享 daemon 入口不是完整 Agent 事件订阅。
 - Claude npm / Node 包装版，以及 transcript 的更广版本兼容。
 - WSL 本地 Collector、完整终端映射、开机启动和签名安装包。
-- 边缘磁吸、Git dirty / diff、复杂动画属于 P1，不在首批实现范围。
+- 保留 1+N 与手选 / Auto；不做通知收件箱、历史数据库、时间线、搜索分组、云同步或控制面。声音、系统通知、磁吸、Git diff、更多 Agent 和 tab 定位不在当前路线内。
 
 ## 已有实现但尚未完成实机验收
 

@@ -42,7 +42,7 @@ export type DemoState = AgentSession['runtime']['state'] | Exclude<AgentSession[
 export const DEMO_STATES: DemoState[] = ['STARTING', 'IDLE', 'THINKING', 'TOOL_RUNNING', 'RESPONDING', 'WAITING_USER', 'DONE', 'ERROR'];
 export const DEMO_STATE_LABELS: Record<DemoState, string> = {
   STARTING: 'Starting', IDLE: 'Idle', THINKING: 'Thinking', TOOL_RUNNING: 'Tool running', RESPONDING: 'Responding',
-  WAITING_USER: 'Waiting user', DONE: 'Done', ERROR: 'Error',
+  WAITING_USER: 'Waiting user', DONE: 'Turn ended', ERROR: 'Error',
 };
 export function demoState(snapshot: Snapshot, id: string, state: DemoState, now: number): Snapshot {
   return { ...snapshot, sessions: snapshot.sessions.map(session => {
@@ -54,7 +54,7 @@ export function demoState(snapshot: Snapshot, id: string, state: DemoState, now:
         detail: state === 'TOOL_RUNNING' ? 'npm run test:unit' : undefined, updatedAt: now },
       attention: { state: attention ? state : 'NONE',
         message: state === 'WAITING_USER' ? 'Bash permission required · demo'
-          : state === 'ERROR' ? 'Tool execution failed · demo' : state === 'DONE' ? 'Task completed · demo' : undefined },
+          : state === 'ERROR' ? 'Tool execution failed · demo' : state === 'DONE' ? 'Turn ended · demo' : undefined },
     };
   }) };
 }

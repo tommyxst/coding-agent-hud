@@ -144,6 +144,13 @@ async function main() {
   codexNotify('thread/status/changed', { threadId: 'native-fixture', status: { type: 'active', activeFlags: [] } });
   await until(async () => (await session('codex')).runtime.state === 'THINKING', 'Codex active status');
   checks.push('Codex read-only proxy handshake, loaded metadata and verified workspace preservation; preview discarded');
+  await page.getByRole('button', { name: 'Collector 状态', exact: true }).evaluate(node => node.click());
+  await page.getByText('HUD 已连接，不代表 Agent 已接入', { exact: false }).waitFor();
+  assert.ok((await page.locator('.collector-list').textContent()).includes('--no-daemon'));
+  assert.equal((await snapshot()).collectors.find(entry => entry.agent === 'claude').state, 'watching');
+  await page.screenshot({ path: path.join(directory, 'collector-limits.png') });
+  await page.getByRole('button', { name: '关闭 Collector 状态', exact: true }).evaluate(node => node.click());
+  checks.push('native diagnostics separate HUD connectivity from verified Hook and documented source limits');
 
   await page.evaluate(() => window.__TAURI_INTERNALS__.invoke('set_privacy', { showCommandDetail: false }));
   fs.appendFileSync(rollout, record('event_msg', { type: 'exec_command_begin', call_id: 'live-exec', command: ['DO_NOT_PUBLISH'] }));
@@ -221,6 +228,24 @@ async function main() {
   hook('ElicitationResult', claude, null, '104-waiting-resolved.json');
   await until(async () => (await session('claude')).attention.state === 'NONE', 'explicit Claude input resolution');
   checks.push('Claude compaction, same-length rotation and explicit waiting resolution');
+  await page.locator('.hud-card').getAttribute('data-primary').then(async id => {
+    if (id !== 'windows:codex:native-fixture') {
+      await page.getByRole('button', { name: '切换至 native-e2e-project', exact: false }).evaluate(node => node.click());
+    }
+  });
+  await page.getByRole('button', { name: '展开 native-e2e-project 详情', exact: true }).evaluate(node => node.click());
+  hook('Stop', claude, null, '105-turn-ended.json');
+  await until(async () => (await session('claude')).attention.state === 'DONE', 'Claude turn end');
+  assert.equal((await session('claude')).attention.message, 'Turn ended');
+  assert.equal(await page.locator('.hud-card').getAttribute('data-primary'), 'windows:codex:native-fixture');
+  await page.getByRole('button', { name: '切换至 claude-e2e-project', exact: false }).evaluate(node => node.click());
+  await page.getByText('TURN ENDED', { exact: true }).waitFor();
+  assert.ok(!(await page.locator('.attention-banner').textContent()).includes('任务已完成'));
+  await page.screenshot({ path: path.join(directory, 'turn-ended.png') });
+  hook('UserPromptSubmit', claude, null, '106-new-turn.json');
+  await until(async () => (await session('claude')).attention.state === 'NONE', 'next Claude turn');
+  await page.getByRole('button', { name: 'Auto', exact: true }).evaluate(node => node.click());
+  checks.push('turn end is not task acceptance; background end preserves manual selection and Auto remains available');
 
   // DOM-dispatched UI clicks reach real Tauri IPC, but do not prove physical mouse behavior.
   await page.getByRole('button', { name: 'HUD 设置', exact: true }).evaluate(node => node.click());
@@ -317,6 +342,7 @@ async function main() {
   await stopFixture(claude);
   await until(async () => (await snapshot()).sessions.length === 0, 'both process exit cleanups');
   await page.waitForSelector('.empty-card', { timeout: READINESS_TIMEOUT_MS });
+  assert.ok((await page.locator('.empty-card').textContent()).includes('部分采集入口不可用'));
   assert.equal(windowState().visible, true, 'explicit tray interaction retains the diagnostic view');
   windowAction('Minimize');
   const emptyMinimized = windowState();

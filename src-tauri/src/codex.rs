@@ -61,7 +61,7 @@ pub fn apply(
                             timestamp,
                         );
                     } else {
-                        s.attention(AttentionState::Done, "Task completed", timestamp);
+                        s.attention(AttentionState::Done, "Turn ended", timestamp);
                     }
                 }
                 "error" => s.attention(AttentionState::Error, "Agent reported an error", timestamp),
@@ -280,6 +280,25 @@ mod tests {
         )
         .unwrap()
     }
+    #[test]
+    fn duplicate_end_is_unchanged_and_old_end_cannot_finish_a_new_turn() {
+        for end in ["task_complete", "turn_complete"] {
+            let mut s = session();
+            let ended = record("event_msg", json!({"type":end}));
+            assert_eq!(apply(&mut s, &ended, false).unwrap(), Update::Changed);
+            assert_eq!(apply(&mut s, &ended, false).unwrap(), Update::Unchanged);
+            let active = serde_json::to_vec(&json!({
+                "timestamp":"2026-10-14T08:01:00Z", "type":"event_msg",
+                "payload":{"type":"turn_started"}
+            }))
+            .unwrap();
+            apply(&mut s, &active, false).unwrap();
+            let before = s.clone();
+            assert_eq!(apply(&mut s, &ended, false).unwrap(), Update::Unchanged);
+            assert_eq!(s, before);
+            assert_eq!(s.unwrap().attention.state, AttentionState::None);
+        }
+    }
     fn session() -> Option<Session> {
         let mut s = None;
         apply(
@@ -332,6 +351,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(s.as_ref().unwrap().attention.state, AttentionState::Done);
+        assert_eq!(
+            s.as_ref().unwrap().attention.message.as_deref(),
+            Some("Turn ended")
+        );
         assert!(!serde_json::to_string(&s).unwrap().contains("SECRET"));
         apply(
             &mut s,
