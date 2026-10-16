@@ -6,6 +6,7 @@ mod collector;
 pub mod hooks;
 pub mod model;
 pub mod native;
+mod placement;
 mod tail;
 
 pub fn run() {

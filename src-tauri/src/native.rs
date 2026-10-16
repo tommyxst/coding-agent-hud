@@ -13,6 +13,7 @@ use windows_sys::Win32::{
         LRESULT, WPARAM,
     },
     Foundation::{GetLastError, SetLastError},
+    Graphics::Gdi::{EnumDisplayDevicesW, DISPLAY_DEVICEW, DISPLAY_DEVICE_ACTIVE},
     System::{
         Diagnostics::ToolHelp::{
             CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
@@ -39,6 +40,46 @@ use windows_sys::Win32::{
         },
     },
 };
+
+pub(crate) fn monitor_id(adapter: &str) -> Result<String, String> {
+    // Request the monitor interface path, not the reorderable DISPLAY1 adapter name.
+    const EDD_GET_DEVICE_INTERFACE_NAME: u32 = 1;
+    let adapter: Vec<u16> = adapter.encode_utf16().chain(Some(0)).collect();
+    let mut index = 0;
+    let mut found = None;
+    loop {
+        let mut device: DISPLAY_DEVICEW = unsafe { zeroed() };
+        device.cb = size_of::<DISPLAY_DEVICEW>() as u32;
+        if unsafe {
+            EnumDisplayDevicesW(
+                adapter.as_ptr(),
+                index,
+                &mut device,
+                EDD_GET_DEVICE_INTERFACE_NAME,
+            )
+        } == 0
+        {
+            break;
+        }
+        index += 1;
+        if device.StateFlags & DISPLAY_DEVICE_ACTIVE == 0 {
+            continue;
+        }
+        let length = device
+            .DeviceID
+            .iter()
+            .position(|value| *value == 0)
+            .ok_or("unterminated monitor interface identifier")?;
+        if length == 0 || found.is_some() {
+            return Err("active monitor interface identifier missing or ambiguous".into());
+        }
+        found = Some(
+            String::from_utf16(&device.DeviceID[..length])
+                .map_err(|error| format!("decode monitor interface identifier: {error}"))?,
+        );
+    }
+    found.ok_or_else(|| "active monitor interface identifier unavailable".into())
+}
 
 fn hud_extended_style(style: isize) -> isize {
     (style & !(WS_EX_APPWINDOW as isize)) | WS_EX_TOOLWINDOW as isize | WS_EX_NOACTIVATE as isize

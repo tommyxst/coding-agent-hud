@@ -2,7 +2,7 @@
 
 面向 Windows 的本地 Coding Agent 状态悬浮窗，观察 Claude Code 和 Codex，不接管模型调用、任务执行或权限审批。
 
-**状态：M2 开发版，A / B / C 实现与隔离回归已完成；真实 Agent 和完整 MVP 尚未验收。** 原始需求见 `Coding Agent HUD 产品需求文档 MVP.md`；阶段、事件覆盖和验证边界见 `docs/development-plan.md`、`docs/m2-event-coverage.md`、`docs/m2-verification.md`。
+**状态：M3-A 开发版，窗口位置保存与隔离原生回归已完成；物理多屏、真实 Agent 和完整 MVP 尚未验收。** M3 分批与 WSL 方案见 `docs/m3-design.md`，本轮结果见 `docs/m3-verification.md`；原始需求见 `Coding Agent HUD 产品需求文档 MVP.md`。
 
 ## 开发启动
 
@@ -34,6 +34,7 @@ npm run dev
 - 透明非激活窗、窗口置顶开关、专用拖动柄、托盘、鼠标穿透、Alt 临时交互。
 - 原生 Claude Hook helper，白名单提取并原子写入元数据；接收后删除事件文件。
 - Claude 异步 transcript 遥测、请求去重、compaction 失效及精确 Hook 卸载。
+- 显示器设备接口标识与逻辑相对位置保存，按当前 DPI 恢复；工作区约束、屏幕缺失诊断与托盘离屏恢复。
 - 默认关闭命令和完整路径展示；不保存 Prompt、回复、文件内容、Shell 输出或凭据。
 
 ## 窗口操作
@@ -44,6 +45,7 @@ npm run dev
 - **HUD 设置 → 界面字号**可选 12–20 px，默认正文 15 px、辅助文字 14 px。旧设置保留隐私及外观偏好。
 - 展开详情后，Activity 更新不会折叠；Waiting / Error / Done 仍立即提示。切换、移除会话或主动收起才清除该详情意图。
 - 粒子动画从当前位置切换方向，不排队重播状态；Idle / Attention / 会话移除立即停止。应用或系统减少动态效果、键盘操作、窗口隐藏也停止动画。
+- 原生位置自动保存在 `%APPDATA%/dev.tommyxst.coding-agent-hud/window-position.json`，不保存会话。屏幕移除时明确提示并恢复主屏；再次连接后需手动拖回。配置损坏时显示 **Collector 状态 → 窗口位置** 错误，保留原文件并禁用本次保存；退出后修复或删除该文件再重启。
 
 ## Codex 采集
 
@@ -101,6 +103,7 @@ helper 失败返回普通非阻断错误，不返回权限拒绝码 2，也不�
 | `CODEX_HOME` | Codex 本身约定的数据根目录 |
 | `HUD_EVENT_DIR` | HUD 与 helper 共用的元数据事件目录；默认 `%LOCALAPPDATA%/CodingAgentHUD/events` |
 | `HUD_STARTUP_SCAN_LIMIT` | 启动阶段候选文件数量，默认 32 |
+| `HUD_PLACEMENT_FILE` | 显式覆盖原生位置文件，必须为绝对文件路径；用于隔离测试 |
 
 环境变量由启动进程显式传入；项目不自动加载 `.env`。UI 设置只保存本地偏好，不保存会话历史。非法配置会报告错误，不静默替换。
 
@@ -120,19 +123,19 @@ npm run desktop:build
 
 GitHub Actions 在 Windows 执行对应检查。CI 是否通过以实际 check run 为准，配置文件不等于运行成功。
 
-当前 M2 的复现命令与结果见 `docs/m2-verification.md`；M1 历史见 `docs/verification.md`，合成预览见 `docs/screenshots/hud-preview.png`。
+M3-A 的复现命令、截图与边界见 `docs/m3-verification.md`，分批与 WSL 方案见 `docs/m3-design.md`；M2 / M1 历史见 `docs/m2-verification.md`、`docs/verification.md`。
 
 ## 功能缺口（尚未实现）
 
 - Codex embedded / `--no-daemon` 及全部瞬时事件覆盖；只读共享 daemon 入口不是完整 Agent 事件订阅。
 - Claude npm / Node 包装版，以及 transcript 的更广版本兼容。
-- WSL 本地 Collector、完整终端映射、DPI / 多屏位置保存、开机启动和签名安装包。
+- WSL 本地 Collector、完整终端映射、开机启动和签名安装包。
 - 边缘磁吸、Git dirty / diff、复杂动画属于 P1，不在首批实现范围。
 
 ## 已有实现但尚未完成实机验收
 
 - 真正交互式 Claude / Codex 的状态准确性与版本兼容。
-- 物理拖动、全局 Alt、托盘恢复、实际鼠标穿透及不同终端前置；窗口标志和 IPC 模拟不能替代这些检查。
+- 物理多屏 / 热插拔与混合 DPI 拖动、全局 Alt、托盘输入、实际鼠标穿透及不同终端前置；单屏 HWND / IPC 和坐标回归不能替代这些检查。
 - 8 小时运行、< 1% 空闲 CPU、< 2 秒发现、< 500 ms 事件响应的测量。
 
 原始设计资料保持不变，真实 session/transcript、凭据与构建产物不进入仓库。

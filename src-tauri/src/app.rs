@@ -1,7 +1,7 @@
 use crate::{
     collector,
     model::{AttentionState, CollectorStatus, Session, Snapshot},
-    native,
+    native, placement,
 };
 use std::{
     collections::BTreeMap,
@@ -162,14 +162,15 @@ fn resize_window(app: AppHandle, width: f64, height: f64) -> Result<(), String> 
         || !height.is_finite()
         || width <= 0.0
         || height <= 0.0
-        || width > monitor.size().width as f64 / scale
-        || height > monitor.size().height as f64 / scale
+        || width > monitor.work_area().size.width as f64 / scale
+        || height > monitor.work_area().size.height as f64 / scale
     {
         return Err("HUD size is outside monitor bounds".into());
     }
     window
         .set_size(LogicalSize::new(width, height))
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    placement::keep_visible(&window)
 }
 #[tauri::command]
 fn return_to_workspace(state: State<'_, Shared>, id: String) -> Result<(), String> {
@@ -205,6 +206,7 @@ fn interaction(app: &AppHandle, shared: &Shared, action: InteractionAction) -> R
         window.show().map_err(|e| e.to_string())?;
         if matches!(action, InteractionAction::Reveal) {
             native::reveal_hud_window(window.hwnd().map_err(|e| e.to_string())?.0 as _)?;
+            placement::keep_visible(&window)?;
         }
     } else {
         window.hide().map_err(|e| e.to_string())?;
@@ -297,6 +299,7 @@ pub fn run() {
             tray(app.handle(), setup_state.clone())?;
             let window = app.get_webview_window("hud").ok_or("HUD window missing")?;
             native::configure_hud_window(window.hwnd()?.0 as _)?;
+            placement::install(app.handle(), setup_state.clone())?;
             let (tx, rx) = std::sync::mpsc::channel();
             let handle = app.handle().clone();
             let alt_state = setup_state.clone();
@@ -315,8 +318,15 @@ pub fn run() {
             collector::start(app.handle().clone(), setup_state.clone());
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("Coding Agent HUD runtime failed");
+        .build(tauri::generate_context!())
+        .expect("Coding Agent HUD runtime failed")
+        .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                if let Err(error) = app.state::<placement::PlacementWriter>().flush() {
+                    eprintln!("HUD placement exit: {error}");
+                }
+            }
+        });
 }
 
 #[cfg(test)]

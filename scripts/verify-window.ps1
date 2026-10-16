@@ -39,6 +39,7 @@ $info = New-Object System.Diagnostics.ProcessStartInfo
 $info.FileName = (Resolve-Path $AppPath).Path
 $info.EnvironmentVariables['CODEX_HOME'] = Join-Path $root 'codex'
 $info.EnvironmentVariables['HUD_EVENT_DIR'] = Join-Path $root 'events'
+$info.EnvironmentVariables['HUD_PLACEMENT_FILE'] = Join-Path $root 'window-position.json'
 $info.EnvironmentVariables['WEBVIEW2_USER_DATA_FOLDER'] = Join-Path $root 'webview-profile'
 $info.UseShellExecute = $false
 $info.CreateNoWindow = $true

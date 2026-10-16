@@ -40,7 +40,8 @@ svg { flex-shrink: 0; vertical-align: middle; }
 .mono { font-family: "Cascadia Code", Consolas, "SFMono-Regular", monospace; font-variant-numeric: tabular-nums; letter-spacing: -0.025em; }
 .muted { color: var(--muted); }
 .agent-claude { --agent: var(--claude); }
-.agent-codex { --agent: var(--codex); }
+.agent-codex, .agent-codex-live { --agent: var(--codex); }
+.agent-window-placement { --agent: var(--muted); }
 .brand-dot { display: inline-block; width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; background: var(--agent); }
 .app-native { width: max-content; }
 .window-content { padding: 12px; width: max-content; transition: opacity 160ms var(--ease-enter); }
@@ -180,6 +181,7 @@ input[type=range] { accent-color: #92a8c4; width: 100%; min-width: 0; height: 16
 .collector-state { margin-left: auto; font-size: 9px; color: var(--muted); }
 .collector-watching { color: var(--done); }
 .collector-error { color: var(--error); }
+.collector-warning { color: var(--waiting); }
 .collector-list p, .collector-empty { color: var(--muted); font-size: 10px; margin: 4px 0 0; overflow-wrap: anywhere; }
 .issue-notice, .success-notice { margin-top: 4px; padding: 8px 12px; border-radius: 8px; border-color: rgba(240,128,128,0.22); }
 .issue-notice > div { display: flex; align-items: center; gap: 6px; color: var(--error); font-size: 11px; }

@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "task": "m3-window-placement",
+  "status": "ready",
+  "goal": "启动 M3 规划与方案设计，首批实现 HUD 多屏位置持久化、DPI 换算和离屏恢复，保留 M2 验收边界及 WSL 后续工作",
+  "criteria": [
+    "形成有源码依据的 M3 分批方案和 WSL 设计边界，明确授权与验收要求",
+    "窗口按显示器标识和逻辑相对位置保存，重启、DPI 变化和屏幕缺失时保持可见，损坏配置明确报错且不覆盖",
+    "新增针对性回归通过，Rust 格式与严格静态检查、Windows 构建和隔离原生检查通过，实机多屏限制如实记录"
+  ],
+  "scope": [
+    "src-tauri/src/app.rs",
+    "src-tauri/src/lib.rs",
+    "src-tauri/src/placement.rs",
+    "src-tauri/src/native.rs",
+    "src-tauri/Cargo.toml",
+    "scripts/verify-window.ps1",
+    "scripts/verify-native.cjs",
+    "scripts/verify-placement.cjs",
+    "scripts/window-fixture-action.ps1",
+    "scripts/read-window-state.ps1",
+    "src/model.ts",
+    "src/Panels.tsx",
+    "src/styles.css",
+    "tests/frontend-render.test.tsx",
+    "docs/",
+    "README.md",
+    "STATE.json",
+    "changes/"
+  ],
+  "constraints": [
+    "不修改用户系统、Claude、Codex 或 WSL 配置，不启动 WSL 发行版或真实模型调用",
+    "不新增或升级依赖，不实现开机启动、签名发布或 P1 功能",
+    "保留现有隐私、非激活、托盘和穿透行为；不暂存、提交、推送或合并",
+    "只声明本轮实际执行的验证；物理多屏和混合 DPI 无法由合成测试替代"
+  ],
+  "current": "M3-A 实现与规划完成；前端 72、Rust 71、位置原生 9 组及既有原生 23 组均通过，Release 和窗口 smoke 通过；文档与最终差异已核对，准备验证关闭",
+  "next": [
+    "完成一次收尾复核",
+    "登记实际检查证据并关闭 M3-A；物理多屏和 WSL 真实验收留在后续"
+  ],
+  "blocked": [],
+  "followUp": null,
+  "change": "changes/active/m3-window-placement",
+  "layer": "docs",
+  "verification": {
+    "evidence": "本地 2026-10-16 UTC+08:00：npm run check 的 TypeScript 与 72 项 Vitest 通过；cargo fmt --manifest-path src-tauri/Cargo.toml -- --check 通过；cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings 通过；cargo test --locked --manifest-path src-tauri/Cargo.toml 为 71 项通过；npm run desktop:build Release 通过。串行执行 scripts/verify-placement.cjs：9 组通过、0 page error、0 model calls；scripts/verify-window.ps1 窗口 smoke 通过且前台不变；scripts/verify-native.cjs 既有 23 组通过、0 page error、0 model calls。结果位于本次 scratch/native-placement-gCeQjn/result.json 和 native-e2e-1792082049041/result.json，日志及 SHA-256 见 docs/m3-verification.md。本机实际为单屏 150%，物理多屏/热插拔/混合 DPI/真实 Agent/8 小时性能未验收，截图生成但图像插件权限拒绝、未做视觉复核；不把这些登记为已通过。M3 分批和 WSL 方案已落盘，WSL 本轮未启动或写入。",
+    "diffReview": "已亲自检查 placement.rs 的配置边界、原子写入、合并写与退出冲刷、恢复/事件/最小化保护，以及 app.rs、native.rs 的生产接入和设备接口标识歧义拒绝；核对所有修改与新增文件、前端诊断契约和脚本隔离。git diff --check 通过，暂存区为空，HEAD 保持 d921336cf2922764e5b134da8389ba9bca0b9d09；AGENTS、原始 PRD 与锁文件无变化。规划只读代理已完成；一次收尾复核后由主代理补查截断的生产入口，未发现新的具体缺陷，未开启新一轮评审。本次只验收 M3-A 开发实现和可执行的隔离检查，物理验收延期，不宣称 M3/MVP 完成。",
+    "intentHash": "f8af561887802a3baf4b702ab406064ac6d112d6422ac22d28f8e508721414ad",
+    "fingerprints": {
+      "README.md": "3ef2e2afa1195942decf6be3930f0708d32e16b87e29f1fdbb7334589013f1d9",
+      "docs/development-plan.md": "a784715fc2999c2297903226e00e98d27e8ef83c19e1055f38a20fabf170ca92",
+      "docs/m3-design.md": "c6b358d08b9c1bd9028c1938bc60b58f866b516b38defb1bc467f194556df0c1",
+      "docs/m3-verification.md": "e58558fe26e57443806ff3768d36bdbc9914233bfa73d3fce45c56c98aceed27",
+      "src-tauri/Cargo.toml": "22cbe0ca19aa1a35018d13dd5261247a015edc68c6f8ee9d4914868e055b0957",
+      "src-tauri/src/app.rs": "c13bebf98e9fed311e704ab16cddbe943ea4e35ebc3f72d76098f18c1dcc134e",
+      "src-tauri/src/lib.rs": "e2f327b51845be34970951ef127b82c443085b074f291cb3abad7913e66ee7a0",
+      "src-tauri/src/native.rs": "2c20b764d53bb3875ca4441f5c04a021beebd2423340b9488e05a56c73da1c47",
+      "src-tauri/src/placement.rs": "06ec6e19ebe02c87e2be8006acf04a1ebf24ebf630ee37419979f0ce3317842b",
+      "src/model.ts": "cfd91e3fe5355ae7b7f2f18f9ec8e28eb875bd1b93f9e2955af4b71e93157a9d",
+      "src/Panels.tsx": "6895f23652fc76c8b5cccb72814dc8d3e353d9d58542b31caa947c48b7f401e0",
+      "src/styles.css": "73c4d3a176ba41d8a5a7f4b987d69cd4fb2c06b7741d3b39f8f1aaa7554a9dd0",
+      "tests/frontend-render.test.tsx": "193bec617b9fd6c8bb5f4674573dc655c3fe9b7f1afad755164f12be7c179b0f",
+      "scripts/read-window-state.ps1": "623056ac5ecc9c7cae38be97deb6a96635e44b81238cab749351a5907acf3d0c",
+      "scripts/verify-native.cjs": "f6c9f7897a50455d5ff0d0a6716b5bdcc1a6dec95fca5eddef1286940bb0dd4b",
+      "scripts/verify-window.ps1": "aa5ba7ce7d24ec35ad88a8cdecb0d6bb5466cc504db607d5daef2e90c5059cf7",
+      "scripts/window-fixture-action.ps1": "2078f4a21cec6908860932dc901caac913d0e12128b1bcbaee08938854a56988",
+      "scripts/verify-placement.cjs": "dcb5a93a41037f2378f0464aaf9eef7045199237e58fefd77348af32cce52530",
+      "AGENTS.md": "92363246bb267aea14209298b94c24ab67c6f94f527ff43f5bd435277159d08b"
+    },
+    "at": "2026-10-15T16:39:52.307Z"
+  },
+  "gate": {
+    "decisions": {},
+    "summary": "已更新 README 的位置文件、故障恢复和环境变量用法；docs/m3-design.md 保存 M3 分批、WSL 来源隔离/源端脱敏/协议/生命周期/授权边界，docs/development-plan.md 同步阶段状态；docs/m3-verification.md 保存实际复现与验收边界。本批按 M3-A 实现完成、物理多屏验收延期关闭，不代表完整 M3 或 MVP 完成。显示器接口变化明确按缺屏处理，保存实际恢复位置，不另建影子锚点。无必要新增通用知识文档。所有变更留在 feat/m3-window-placement，未暂存/提交/推送/合并；WSL、系统和 Agent 配置未改动。"
+  }
+}

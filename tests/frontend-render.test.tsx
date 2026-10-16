@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { createDemoSnapshot } from '../src/demo';
 import { DEFAULT_SETTINGS, type HudMode, type HudSettings } from '../src/model';
 import { Hud, RecentTools } from '../src/Hud';
+import { CollectorPanel } from '../src/Panels';
 
 function markup(mode: HudMode, settings: HudSettings = DEFAULT_SETTINGS, unknown = false) {
   const sessions = createDemoSnapshot(200000).sessions;
@@ -64,4 +65,15 @@ it.each(['compact', 'active', 'expanded'] as const)('has separate window drag an
   expect(html).toContain('aria-label="拖动窗口"');
   expect(html).toContain('aria-label="取消窗口置顶"');
   expect(html).not.toContain('固定主会话');
+});
+
+it('labels placement warnings separately from Agent collectors', () => {
+  const html = renderToStaticMarkup(<CollectorPanel collectors={[
+    { agent: 'window-placement', state: 'warning', message: '保存的显示器已移除' },
+    { agent: 'codex-live', state: 'watching', message: '只读连接' },
+  ]} native={true} connection="live" onClose={() => {}} onRetry={() => {}}/>);
+  expect(html).toContain('<strong>窗口位置</strong>');
+  expect(html).toContain('collector-warning mono">Warning');
+  expect(html).toContain('保存的显示器已移除');
+  expect(html).toContain('<strong>Codex 实时</strong>');
 });

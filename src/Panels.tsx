@@ -69,7 +69,10 @@ export function SettingsPanel({ settings, disabled, native, onChange, onReset, o
 }
 
 const collectorLabels: Record<CollectorStatus['state'], string> = {
-  watching: 'Watching', unavailable: 'Unavailable', error: 'Error',
+  watching: 'Watching', unavailable: 'Unavailable', warning: 'Warning', error: 'Error',
+};
+const collectorNames: Record<CollectorStatus['agent'], string> = {
+  claude: 'Claude Code', codex: 'Codex', 'codex-live': 'Codex 实时', 'window-placement': '窗口位置',
 };
 interface CollectorProps {
   collectors: CollectorStatus[];
@@ -96,7 +99,7 @@ export function CollectorPanel({ collectors, native, connection, onClose, onRetr
             <li key={collector.agent}>
               <div className="collector-title">
                 <span className={`brand-dot agent-${collector.agent}`}/>
-                <strong>{collector.agent === 'claude' ? 'Claude Code' : 'Codex'}</strong>
+                <strong>{collectorNames[collector.agent]}</strong>
                 <span className={`collector-state collector-${collector.state} mono`}>{collectorLabels[collector.state]}</span>
               </div>
               <p>{collector.message}</p>

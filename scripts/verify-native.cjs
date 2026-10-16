@@ -105,6 +105,7 @@ async function main() {
     windowsHide: true, stdio: ['ignore', logfile, logfile],
     env: { ...process.env, CODEX_HOME: path.join(directory, 'codex'), HUD_EVENT_DIR: events,
       HUD_CODEX_PROXY_FIXTURE_DIR: directory,
+      HUD_PLACEMENT_FILE: path.join(directory, 'window-position.json'),
       WEBVIEW2_USER_DATA_FOLDER: path.join(directory, 'webview-profile'),
       WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port} --remote-debugging-address=127.0.0.1` },
   });
