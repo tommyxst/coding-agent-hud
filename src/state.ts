@@ -87,16 +87,17 @@ export function nextDoneDelay(records: DoneRecords, now: number, doneDisplayMs: 
 
 export interface ViewChoice { key: string; mode: HudMode }
 
-export function resolveMode(session: AgentSession, done: DoneRecords, view: ViewChoice | null): HudMode {
+export function resolveMode(session: AgentSession, done: DoneRecords, view: ViewChoice | null, visualActivity?: AgentSession['runtime']['state']): HudMode {
   const requested = view?.key === session.id ? view.mode : null;
   if (requested === 'expanded') return 'expanded';
   if (displayedAttention(session, done) !== 'NONE') return 'attention';
-  return requested ?? automaticMode(session, done);
+  return requested ?? automaticMode(session, done, visualActivity);
 }
 
-export function automaticMode(session: AgentSession, done: DoneRecords): HudMode {
+export function automaticMode(session: AgentSession, done: DoneRecords, visualActivity?: AgentSession['runtime']['state']): HudMode {
+  const activity = visualActivity ?? session.runtime.state;
   if (displayedAttention(session, done) !== 'NONE') return 'attention';
-  if (session.attention.state === 'DONE' || session.runtime.state === 'IDLE') return 'compact';
+  if (session.attention.state === 'DONE' || activity === 'IDLE') return 'compact';
   return 'active';
 }
 

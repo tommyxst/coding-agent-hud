@@ -1,0 +1,445 @@
+{
+  "version": 1,
+  "title": "Coding Agent HUD 核心架构责任图（Windows 轻量第一批）",
+  "source": "只读静态分析，未运行构建或测试。完整读取：src-tauri/src 全部 Rust 模块与 bin、src 全部前端模块、tests 四个前端测试、六个验证与 Hook 脚本、docs（development-plan、m3-design、windows-loop-verification、claude-hooks.example.json）、index.html、package.json、vite.config.ts、tauri.conf.json、capabilities、Cargo.toml 与 build.rs，并用 grep 核实全部跨模块 use 边。未纳入：dist、gen、icons、node_modules、锁文件、.github、changes、UI&UX 与原始 PRD；未读取真实 transcript 或凭据。限制：仅源码级调用与契约关系，不含运行期行为；未验证任何检查通过；未做真实 Agent、物理多屏、全局 Alt/托盘鼠标或性能测量；WSL 条目来自 m3-design 计划表，不是已实现代码。",
+  "nodes": [
+    {
+      "id": "entry",
+      "title": "二进制入口与模块装配",
+      "description": "main.rs 仅调用 coding_agent_hud_lib::run()；lib.rs 是唯一模块可见性声明处（app/collector/codex_live/placement/tail 私有，claude/hooks/model/native 公开），并把 run() 转发 app::run()。agent-hud-hook 是独立 bin，依赖 lib 的 hooks 与 native。",
+      "files": [
+        "src-tauri/src/main.rs",
+        "src-tauri/src/lib.rs"
+      ]
+    },
+    {
+      "id": "shell",
+      "title": "共享注册表、快照发布与窗口交互",
+      "description": "HudState 持有 sessions/collectors 与 show_detail、requested_click_through、alt、interactive、force_show。snapshot() 组装 Snapshot 并按隐私剥离 runtime.detail；click_through() 在 Alt、交互模式或 Waiting/Error 会话下失效；publish() 比较上次快照去重后设置穿透与显隐、重应用窗口样式并 emit hud:snapshot。暴露 6 个 #[tauri::command]，tray() 提供三项菜单，Exit 时冲刷位置。",
+      "files": [
+        "src-tauri/src/app.rs"
+      ]
+    },
+    {
+      "id": "model",
+      "title": "Rust 统一 Session Model 与快照契约",
+      "description": "Activity 与 AttentionState 分离；定义 Session/Environment/Agent/Project/Runtime/Attention/Model/Context/Tokens/Workspace/CollectorStatus/Snapshot 的 serde 形状。Session::new 生成 windows:{agent}:{id}，environment.type 固定 windows、cwd 必填。observe_tool 去重、拒绝把 Failed 降级为 Returned、上限 RECENT_TOOL_LIMIT=8。running_tools、hook_waiting、terminal_window 用 #[serde(skip)] 不上线。",
+      "files": [
+        "src-tauri/src/model.rs"
+      ]
+    },
+    {
+      "id": "collector",
+      "title": "采集编排：文件事件、Hook 消费与退出清理",
+      "description": "notify 监视 HUD 事件目录（非递归）与 Codex sessions 根（递归）。启动时若有 codex.exe 则按 HUD_STARTUP_SCAN_LIMIT（默认 32）扫描最近 rollout，并重放已存在的 Hook 事件。rollout() 仅在 codex_owner 返回唯一 codex.exe 持有者时注册会话。hook() 校验 PID 名称与进程创建时间、拒绝结束后晚事件、只在显式 SessionStart 复活会话；transcript() 只更新已存在会话的遥测；sync 与 Exit 按 agent_pid 清理。",
+      "files": [
+        "src-tauri/src/collector.rs"
+      ]
+    },
+    {
+      "id": "hook",
+      "title": "Claude Hook 元数据白名单与 helper",
+      "description": "HookEvent 是 deny_unknown_fields 的白名单（14 类事件），from_input 只取 session_id/cwd/tool_name/model/notification_type/tool_use_id/transcript_path，丢弃 prompt、tool_input 等。PermissionRequest 只登记候选，只有 Notification 的 permission_prompt 才置 permission_visible 并产生 WaitingUser；Stop/StopFailure 产生 Done/Error，SessionEnd 令采集端注销，compaction 只清 context。helper 自行定位 claude.exe 祖先、附 process_started_at 并以 .pending→.json 原子发布。",
+      "files": [
+        "src-tauri/src/hooks.rs",
+        "src-tauri/src/bin/agent-hud-hook.rs"
+      ]
+    },
+    {
+      "id": "rollout",
+      "title": "Codex rollout JSONL 解析",
+      "description": "apply() 逐行把 rollout 记录映射为 Session 变更并返回 Unchanged/Changed/Ended。session_meta 建会话并读 cli_version 与 git.branch；event_msg 覆盖 turn 起止、审批/输入等待、工具起止、token_count（last_token_usage.total_tokens 标为估算 Context，累计值为 Tokens）与 compaction；response_item 覆盖工具调用/推理/回复；shutdown_complete 返回 Ended。早于 updated_at 的记录被丢弃，无 call_id 时生成独立观察。",
+      "files": [
+        "src-tauri/src/codex.rs"
+      ]
+    },
+    {
+      "id": "live",
+      "title": "Codex 共享 daemon 只读观察",
+      "description": "Observer::start 只接受绝对路径且文件名为 codex.exe 的可执行文件，以 app-server proxy 启动子进程并绑定 KILL_ON_JOB_CLOSE Job Object，stderr 置空。exchange() 只发送 initialize/initialized/thread/loaded/list/thread/read(includeTurns=false)，帧上限 1 MiB；收到服务器请求即断开且不响应，错误文本不回显内容。Idle 不产生 Done，daemon 单独发现的会话不带 workspace。",
+      "files": [
+        "src-tauri/src/codex_live.rs"
+      ]
+    },
+    {
+      "id": "telemetry",
+      "title": "Claude transcript 遥测",
+      "description": "Telemetry 只反序列化 assistant 的 message.id/model/usage 与 system compact_boundary，丢弃 content 与 prompt；按 message.id 合并流式记录并累加为 Tokens，Context 取最近请求 input 与缓存之和并标记 estimated、不猜 limit；compaction 之前的结果不作 Context。apply() 只写 model/tokens/context，不改 runtime、attention 或工具观察。",
+      "files": [
+        "src-tauri/src/claude.rs"
+      ]
+    },
+    {
+      "id": "tail",
+      "title": "增量 JSONL 尾读",
+      "description": "JsonlTail 以 GetFileInformationByHandle 的卷序号与文件索引判断身份，配合长度回退决定重置；只消费以换行结尾的完整记录，半行与不完整 UTF-8 留待下次；解析失败保持 offset 不前移。rollout 与 Claude transcript 共用该类型。",
+      "files": [
+        "src-tauri/src/tail.rs"
+      ]
+    },
+    {
+      "id": "native",
+      "title": "Win32 进程与窗口身份",
+      "description": "processes()/ancestors() 构建进程表与祖先链；file_owners 用重启管理器只读查询持有者，codex_owner 再按进程名过滤并要求唯一。process_image/process_started_at 提供路径与创建时间用于身份复核。workspace() 在 TERMINALS 白名单祖先中只接受唯一可见窗口，PID 复用或歧义时给出 binding_error 而不猜。return_to_workspace 复核 HWND、PID、进程名与创建时间后才 SetForegroundWindow；start_alt_hook 只观察 Alt。",
+      "files": [
+        "src-tauri/src/native.rs"
+      ]
+    },
+    {
+      "id": "placement",
+      "title": "窗口位置持久化与可见范围",
+      "description": "以显示器设备接口标识加工作区逻辑偏移保存位置（版本 1、上限 4 KiB、deny_unknown_fields），启动时按 scale 换算并约束在工作区内；屏幕缺失或标识歧义时明确诊断或回退主屏。保存走 250 ms 合并与临时文件原子替换，正常退出冲刷；坏配置保留原文件并禁用本次保存，上报 window-placement 诊断。",
+      "files": [
+        "src-tauri/src/placement.rs"
+      ]
+    },
+    {
+      "id": "frontend-core",
+      "title": "前端启动、连接与装配",
+      "description": "main.tsx 按 isTauri() 分流：原生以空快照启动，浏览器动态 import 演示数据并有失败页。native.ts 的 openHudConnection 先注册两个 listen，再下发隐私设置，最后取快照，并用 revision 丢弃被推送覆盖的过期结果，close 传播 unlisten 失败。App.tsx 维护连接、设置、手选/Auto、Done 计时与错误分类，并以串行队列调用五个命令。",
+      "files": [
+        "src/main.tsx",
+        "src/App.tsx",
+        "src/native.ts"
+      ]
+    },
+    {
+      "id": "frontend-view",
+      "title": "呈现、状态推导与本地偏好",
+      "description": "state.ts 提供排序、主会话选择、Done 生命周期、模式解析、Context 阈值（70/90）与格式化纯函数；settings.ts 做带版本与 schema 校验的本地读写；Hud.tsx 渲染四种模式、1+N 次级列表、注意力横幅（明示本轮结束而非任务完成）与详情抽屉；Panels.tsx 渲染设置与 Collector 面板并列明入口限制，EmptyState 按连接与采集证据区分空态；PipelineTrack.tsx 只做 transform/opacity 动画。",
+      "files": [
+        "src/Hud.tsx",
+        "src/Panels.tsx",
+        "src/PipelineTrack.tsx",
+        "src/Icon.tsx",
+        "src/DemoControls.tsx",
+        "src/demo.ts",
+        "src/state.ts",
+        "src/settings.ts",
+        "src/styles.css"
+      ]
+    },
+    {
+      "id": "web-contract",
+      "title": "前端契约类型（Rust 快照的 TS 镜像）",
+      "description": "AgentSession、CollectorStatus、Snapshot、HudSettings 与 DEFAULT_SETTINGS。CollectorStatus.agent 值域 claude/codex/codex-live/window-placement，state 值域 waiting/connecting/watching/unavailable/warning/error，与 Rust 侧实际写入的字符串一一对应。",
+      "files": [
+        "src/model.ts"
+      ]
+    },
+    {
+      "id": "build-config",
+      "title": "构建与运行配置",
+      "description": "index.html 以 /src/main.tsx 为模块入口；vite 固定 127.0.0.1:1420 与 es2022；tauri.conf.json 定义唯一 label=hud 的透明、无装饰、置顶、不可聚焦、初始隐藏窗口与 CSP，devUrl 指向同一端口，bundle.active=false；capabilities 只授予事件与 startDragging；Cargo.toml 锁定两个 bin 与 windows-sys 特性，build.rs 调 tauri_build::build()。",
+      "files": [
+        "index.html",
+        "package.json",
+        "vite.config.ts",
+        "src-tauri/tauri.conf.json",
+        "src-tauri/capabilities/hud.json",
+        "src-tauri/Cargo.toml",
+        "src-tauri/build.rs"
+      ]
+    },
+    {
+      "id": "tests",
+      "title": "前端回归测试",
+      "description": "四个 Vitest 文件覆盖连接生命周期（监听顺序、部分失败清理、过期快照丢弃、unlisten 失败传播）、状态推导（排序、手选/Auto、Done 到期、Context 阈值与未知值）、设置 schema 与 v1 迁移，以及服务端渲染断言（隐私默认隐藏、空态证据区分、结束文案不含任务完成措辞）。Rust 单元测试位于各实现文件的 #[cfg(test)] 模块。",
+      "files": [
+        "tests/frontend-native.test.ts",
+        "tests/frontend-state.test.ts",
+        "tests/frontend-settings.test.ts",
+        "tests/frontend-render.test.tsx"
+      ]
+    },
+    {
+      "id": "verification",
+      "title": "隔离原生验证脚本",
+      "description": "verify-native.cjs 在可丢弃目录构造 rollout、Hook 事件与 transcript，复制 debug deps 测试二进制作合成持有进程，用 rustc 编译 codex-proxy-fixture.exe 并改名 codex.exe，再以隔离环境变量启动 release exe，经 CDP 调用真实 IPC 断言。read-window-state.ps1 与 window-fixture-action.ps1 提供窗口状态与动作，verify-window.ps1 做无会话隐藏、置顶、ToolWindow、NoActivate 与前台不变检查。",
+      "files": [
+        "scripts/verify-native.cjs",
+        "scripts/verify-window.ps1",
+        "scripts/read-window-state.ps1",
+        "scripts/window-fixture-action.ps1",
+        "scripts/codex-proxy-fixture.rs"
+      ]
+    },
+    {
+      "id": "hook-config-scripts",
+      "title": "Claude Hook 合并与卸载脚本",
+      "description": "configure 读 docs/claude-hooks.example.json，把占位命令替换为绝对 helper 路径后合并进用户设置，保留既有 Hook 与权限并保持幂等；写入前备份原始字节、保留 BOM/CRLF，比较后原子替换，检测到并发变化即中止。unconfigure 只删除命令精确匹配的 Hook。互斥依赖 .hud.lock，脚本注释明确它不是文件 compare-and-swap。",
+      "files": [
+        "scripts/configure-claude-hooks.cjs",
+        "scripts/unconfigure-claude-hooks.cjs",
+        "scripts/configure-claude-hooks.node.cjs",
+        "scripts/unconfigure-claude-hooks.node.cjs",
+        "docs/claude-hooks.example.json"
+      ]
+    },
+    {
+      "id": "docs",
+      "title": "设计、覆盖与验证文档",
+      "description": "development-plan.md 记录 M1–M3 阶段、实现边界与适配依据；m3-design.md 给出轻量四批路线、M3-A 位置模型与 WSL 接入前必须改动的现有入口表；windows-loop-verification.md 记录第一批自动检查结果、真实入口证据、授权边界与未验收项。",
+      "files": [
+        "docs/development-plan.md",
+        "docs/m3-design.md",
+        "docs/windows-loop-verification.md"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "entry",
+      "to": "shell",
+      "label": "lib.rs 声明 mod app 并调用 app::run()；main.rs 调用 run()"
+    },
+    {
+      "from": "shell",
+      "to": "collector",
+      "label": "setup 调 collector::start 启动采集线程"
+    },
+    {
+      "from": "shell",
+      "to": "placement",
+      "label": "setup 调 placement::install；resize 与 Reveal 调 keep_visible；Exit 调 flush"
+    },
+    {
+      "from": "shell",
+      "to": "native",
+      "label": "configure_hud_window、reveal_hud_window、return_to_workspace、start_alt_hook"
+    },
+    {
+      "from": "shell",
+      "to": "model",
+      "label": "HudState 持有 Session/CollectorStatus；snapshot() 构造 Snapshot 并剥离 detail"
+    },
+    {
+      "from": "collector",
+      "to": "shell",
+      "label": "use crate::app::{publish, Shared}；每个信号后 publish 同一注册表"
+    },
+    {
+      "from": "collector",
+      "to": "model",
+      "label": "Activity、AttentionState、CollectorStatus、Session"
+    },
+    {
+      "from": "collector",
+      "to": "hook",
+      "label": "hooks::{event_dir, HookEvent}；read_hook 解析后删除事件文件"
+    },
+    {
+      "from": "collector",
+      "to": "rollout",
+      "label": "codex::apply 逐行返回 Update；Ended 时移除会话"
+    },
+    {
+      "from": "collector",
+      "to": "live",
+      "label": "codex_live::{LiveState, Observer}；Observer 使用 process_image 的绝对路径"
+    },
+    {
+      "from": "collector",
+      "to": "telemetry",
+      "label": "claude::Telemetry 在 transcript() 中只回写 model/tokens/context"
+    },
+    {
+      "from": "collector",
+      "to": "tail",
+      "label": "tail::JsonlTail 供 rollout 与 Claude transcript 增量读取"
+    },
+    {
+      "from": "collector",
+      "to": "native",
+      "label": "processes、codex_owner、file_owners、process_started_at、workspace、on_process_exit"
+    },
+    {
+      "from": "hook",
+      "to": "model",
+      "label": "HookEvent::apply 直接改 Session 的 Activity/Attention/工具观察/等待状态"
+    },
+    {
+      "from": "rollout",
+      "to": "model",
+      "label": "构造与更新 Session、Runtime、Attention、Model、Context、Tokens"
+    },
+    {
+      "from": "live",
+      "to": "model",
+      "label": "Metadata::session 构造 Session；decorate 覆盖 Activity/Attention"
+    },
+    {
+      "from": "telemetry",
+      "to": "model",
+      "label": "写入 Model、Tokens、Context"
+    },
+    {
+      "from": "native",
+      "to": "model",
+      "label": "workspace() 返回 model::Workspace"
+    },
+    {
+      "from": "placement",
+      "to": "native",
+      "label": "native::monitor_id 取显示器设备接口路径，不用可重排编号"
+    },
+    {
+      "from": "placement",
+      "to": "shell",
+      "label": "publish 上报 window-placement 诊断状态"
+    },
+    {
+      "from": "placement",
+      "to": "model",
+      "label": "构造 CollectorStatus 写入共享注册表"
+    },
+    {
+      "from": "frontend-core",
+      "to": "web-contract",
+      "label": "App 以 Snapshot 初始化；native.ts 监听 hud:snapshot 与 hud:interaction"
+    },
+    {
+      "from": "frontend-core",
+      "to": "frontend-view",
+      "label": "App 渲染 Hud/Panels/DemoControls 并使用 state 与 settings 纯函数"
+    },
+    {
+      "from": "frontend-core",
+      "to": "shell",
+      "label": "invoke 六个命令与 emit 事件名一一对应"
+    },
+    {
+      "from": "frontend-view",
+      "to": "web-contract",
+      "label": "组件与纯函数消费 AgentSession、CollectorStatus、HudSettings"
+    },
+    {
+      "from": "build-config",
+      "to": "frontend-core",
+      "label": "index.html 入口 /src/main.tsx；vite 端口与 devUrl 一致"
+    },
+    {
+      "from": "build-config",
+      "to": "shell",
+      "label": "tauri.conf.json 定义 hud 窗口与 CSP；capability 授权 startDragging"
+    },
+    {
+      "from": "tests",
+      "to": "frontend-core",
+      "label": "frontend-native.test.ts 构造 HudPort 断言连接顺序与清理"
+    },
+    {
+      "from": "tests",
+      "to": "frontend-view",
+      "label": "覆盖 state.ts、settings.ts、Hud.tsx、Panels.tsx、demo.ts"
+    },
+    {
+      "from": "tests",
+      "to": "web-contract",
+      "label": "测试以 Snapshot、AgentSession、CollectorStatus、HudSettings 为契约"
+    },
+    {
+      "from": "verification",
+      "to": "shell",
+      "label": "verify-native.cjs 以隔离环境变量启动 release exe 并经 CDP 调真实 IPC"
+    },
+    {
+      "from": "verification",
+      "to": "live",
+      "label": "codex-proxy-fixture.rs 编译为 codex.exe 满足 Observer 校验并断言只读请求"
+    },
+    {
+      "from": "verification",
+      "to": "native",
+      "label": "复用测试二进制作合成持有进程，验证 codex_owner 与退出回调"
+    },
+    {
+      "from": "verification",
+      "to": "placement",
+      "label": "两个脚本用 HUD_PLACEMENT_FILE 隔离位置，避免触碰用户配置"
+    },
+    {
+      "from": "hook-config-scripts",
+      "to": "docs",
+      "label": "合并脚本以 docs/claude-hooks.example.json 为模板"
+    },
+    {
+      "from": "hook-config-scripts",
+      "to": "hook",
+      "label": "写入 agent-hud-hook.exe 绝对路径，卸载按精确命令比较"
+    },
+    {
+      "from": "docs",
+      "to": "collector",
+      "label": "m3-design 指出 sync_codex 与 PID 清理须改为来源内清理"
+    },
+    {
+      "from": "docs",
+      "to": "model",
+      "label": "同一表格指出 Session::new 固定 windows ID 且 cwd 必填"
+    },
+    {
+      "from": "docs",
+      "to": "frontend-view",
+      "label": "同一表格指出 Panels 诊断按 agent 键、Hud 缺 distro"
+    },
+    {
+      "from": "docs",
+      "to": "verification",
+      "label": "windows-loop-verification 记录两脚本第一批结果与未验收边界"
+    }
+  ],
+  "fingerprints": {
+    "src-tauri/src/main.rs": "fe493734f23b2ddfc7e0651525dee3e6415fc7a4f32bae239d61491821c0f9ec",
+    "src-tauri/src/lib.rs": "e2f327b51845be34970951ef127b82c443085b074f291cb3abad7913e66ee7a0",
+    "src-tauri/src/app.rs": "c13bebf98e9fed311e704ab16cddbe943ea4e35ebc3f72d76098f18c1dcc134e",
+    "src-tauri/src/model.rs": "fbb390725a18de90e2815c1743126b54ff895c9acc65aa579a566305d5279535",
+    "src-tauri/src/collector.rs": "905b7c8732375446acda9f6472419f26ade0573a1e21013689a2e9ce6b3717bf",
+    "src-tauri/src/hooks.rs": "77737b82aea35c8db1620b75161fdb2d0d9a77eee73c4055bd9201694349b01a",
+    "src-tauri/src/bin/agent-hud-hook.rs": "778b83c4b2a350d461d3899623527fd6053653803489fbf45091424a503b0cc0",
+    "src-tauri/src/codex.rs": "3ee7271aa55b2fafcf169d96c244e98c9b700f18061ca023cec40393702721f6",
+    "src-tauri/src/codex_live.rs": "9ea99f95e6d3cb7c97d5358b415a2d51dcdb12da4632bfd02a0f9fc32f207b18",
+    "src-tauri/src/claude.rs": "384b242c7fe1290d2f0dcc376fe7cab512ec1d24ba519f262523e83cd8b9b8f4",
+    "src-tauri/src/tail.rs": "af0bae1907c984731025defb6ae183e57af8eecf562eac59392a7fd08b8bb46c",
+    "src-tauri/src/native.rs": "7fc2d3a02059e10b6ae47406ef8bcf8ff1b89029e988e927154818c0bf0ff275",
+    "src-tauri/src/placement.rs": "ff13cd3a701177eb36f2e5458ef54253013c9e38626a12f4393d25e23b3d11ba",
+    "src/main.tsx": "c9ff4dc59666cb0da543919ba9715993fa350796a81d56b885fddfb3339a1efc",
+    "src/App.tsx": "9010252e912b20b1fc4570dbd16d441269126536493d76a15a15671dba5745c0",
+    "src/native.ts": "e878648677dbe4580738b16d7fce26258aa8f1d636de1b6c47d4a10715289e7b",
+    "src/Hud.tsx": "0e7d6d9235ecc3eb46cb05164d7a113452131a09b89414fe1475488619c14ad5",
+    "src/Panels.tsx": "64f80ac5ed36f481c0dca1ff67cca053142631ff848617432cf121f2760d54a5",
+    "src/PipelineTrack.tsx": "61e1635fcf84d3576353a80549269662af0465ac860a97ed0dbd4b4b03ae345d",
+    "src/Icon.tsx": "4467e54435e700d8f2d51bb871032a64732e5972c39cf9e5db02c763b81fe908",
+    "src/DemoControls.tsx": "14edf56208a6df214989c5e4f7cab17d1e57d597423246b2ec3063ee8cd6c867",
+    "src/demo.ts": "a0dae96a282e110855501d2504de3b2ad7e3dc1b0427c405df94b7b487e90035",
+    "src/state.ts": "80e49a53c0d9d3c80a26566102ab8f95695a291b8a693b9575145687cd796764",
+    "src/settings.ts": "07a338cc344f631d0f7f9a663e1ec5a51ff8e6a0aed73be74685372d9e3cac53",
+    "src/styles.css": "73c4d3a176ba41d8a5a7f4b987d69cd4fb2c06b7741d3b39f8f1aaa7554a9dd0",
+    "src/model.ts": "b3cffdbde6c837dcc09f56b20161e0a0ea5b7b123eabe2fa1f77d09d140bbee1",
+    "index.html": "05eb6c9ae1830a6bfdce13d06d7724974b140c3c56cbccd570dc5522802f334a",
+    "package.json": "2bd6f8b6a26c5301a5ca487bf9772fb2055e5c9a1689c98dc8da5fa14e6ca9c4",
+    "vite.config.ts": "b801d90b252121cbce8e86ced27f7fef9caec3e97af18040791fe171b9020540",
+    "src-tauri/tauri.conf.json": "e660c9ea714c6723e05db0098ba171861548a35f9b2c00875573bc331f8a16d3",
+    "src-tauri/capabilities/hud.json": "50e133601e3dc1378f8c306859569f1baa441c06de3747881938ff0e9b6d6cce",
+    "src-tauri/Cargo.toml": "22cbe0ca19aa1a35018d13dd5261247a015edc68c6f8ee9d4914868e055b0957",
+    "src-tauri/build.rs": "6aeeab41bc35efde4e3c2b644a6248f7fc06d24ae30b75c0d33491cbb0c1fa31",
+    "tests/frontend-native.test.ts": "411ac866c2a35fbc4f96ca97f7b3436365b1e47deec9a703c5691db7675d574f",
+    "tests/frontend-state.test.ts": "fc8adf5f87ec8dd1bc7235c5e3fd444f4b7a3dd27dabf1afd683ac10da9d79b9",
+    "tests/frontend-settings.test.ts": "dc777f03dfc34a1e31a82a929f4f774c5819309d768d2b9f0908072a66057abd",
+    "tests/frontend-render.test.tsx": "b224a329ea660b87a454d07402ae45235af85ae624d9e9208db95b320f50d62b",
+    "scripts/verify-native.cjs": "42a943c8fa8776b3750369665898c2dfa334a2da37b336daa8b8a2d8b4ef48ec",
+    "scripts/verify-window.ps1": "aa5ba7ce7d24ec35ad88a8cdecb0d6bb5466cc504db607d5daef2e90c5059cf7",
+    "scripts/read-window-state.ps1": "623056ac5ecc9c7cae38be97deb6a96635e44b81238cab749351a5907acf3d0c",
+    "scripts/window-fixture-action.ps1": "2078f4a21cec6908860932dc901caac913d0e12128b1bcbaee08938854a56988",
+    "scripts/codex-proxy-fixture.rs": "929b5f79a08a63f0b29be990dae4ab066523d54ced0c524f92e47cceff645a9c",
+    "scripts/configure-claude-hooks.cjs": "507bb1d6b31ea1b7448930c7a01d380477c49afed7bc4f63f6f54b0c3f41dba7",
+    "scripts/unconfigure-claude-hooks.cjs": "b1aa0f8a2b5be77d363a1857ae1ba26edef1be0c17d3717df566e9a5dadbe02e",
+    "scripts/configure-claude-hooks.node.cjs": "9913780b778d58f7e8a3db050d49fb7c42ef702befb40a5b406db353397d5953",
+    "scripts/unconfigure-claude-hooks.node.cjs": "3f97770c1bd37104470725425ca40e37166a221a83f4227d1fcb8769c9635fe3",
+    "docs/claude-hooks.example.json": "d9e29deaccb4d66139313e70736fee44bd901accfe8ce935cc9b08ad8c2b1670",
+    "docs/development-plan.md": "6697bf9bd55098e11f8e60f9c5f94f5173951eae28db02ade8ad80ca65aa2aa8",
+    "docs/m3-design.md": "90de38f77d35b1da79896dfe8411e5f718b9be542c2e5083f056fff19f8c8479",
+    "docs/windows-loop-verification.md": "d7cd7c0fcdceb42263249016e994beac8487f012ff5ae56f15108af8da86691c"
+  },
+  "updatedAt": "2026-10-16T08:17:41.058Z"
+}

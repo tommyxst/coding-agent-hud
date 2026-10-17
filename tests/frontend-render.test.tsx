@@ -11,7 +11,8 @@ function markup(mode: HudMode, settings: HudSettings = DEFAULT_SETTINGS, unknown
     ...(unknown ? { context: undefined, tokens: undefined } : {}),
     ...(ended ? { attention: { state: 'DONE' as const, message: 'Turn ended' } } : {}),
   };
-  return renderToStaticMarkup(<Hud primary={primary} secondary={sessions.slice(1)} settings={settings} done={{}} mode={mode} motionDisabled={false} alwaysOnTop={true} topmostPending={false} returning={false} onToggleTopmost={() => {}} onDrag={() => {}} onReturn={() => {}} onMode={() => {}} onSelect={() => {}}/>);
+  const telemetry = { tool: primary.runtime.tool, detail: primary.runtime.detail, tokens: primary.tokens, context: primary.context };
+  return renderToStaticMarkup(<Hud sessions={sessions} order={[]} primary={primary} settings={settings} done={{}} mode={mode} motionDisabled={false} alwaysOnTop={true} topmostPending={false} returning={false} pinned={false} entering={[]} visual={primary.runtime.state} telemetry={telemetry} onToggleTopmost={() => {}} onTogglePin={() => {}} onDrag={() => {}} onReturn={() => {}} onMode={() => {}} onSelect={() => {}}/>);
 }
 describe('HUD semantic rendering and privacy', () => {
   it.each(['compact', 'active', 'attention', 'expanded'] as const)('renders %s without disclosing hidden commands or paths, including tooltips', mode => {
@@ -20,6 +21,10 @@ describe('HUD semantic rendering and privacy', () => {
     expect(html).not.toContain('/home/demo/repos');
     expect(html).toContain('ai-experience-qa');
     expect(html).toContain('切换至 wealth-workbench');
+    expect(html).toContain('side-dock');
+    expect(html).not.toContain('其他会话');
+    expect(html.indexOf('>CC1<')).toBeLessThan(html.indexOf('>CC2<'));
+    expect(html.indexOf('>CC2<')).toBeLessThan(html.indexOf('>CX1<'));
   });
   it('only reveals command and workspace after their separate privacy opt-ins', () => {
     expect(markup('expanded', { ...DEFAULT_SETTINGS, showCommandDetail: true })).toContain('npm run test:unit');
@@ -67,6 +72,7 @@ it.each(['compact', 'active', 'expanded'] as const)('has separate window drag an
   const html = markup(mode);
   expect(html).toContain('aria-label="拖动窗口"');
   expect(html).toContain('aria-label="取消窗口置顶"');
+  if (mode !== 'compact') expect(html).toContain('固定当前会话');
   expect(html).not.toContain('固定主会话');
 });
 

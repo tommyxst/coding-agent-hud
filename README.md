@@ -28,7 +28,7 @@ npm run dev
 - Rust 统一 Session Model，Activity 与 Attention 分离。
 - Codex JSONL 增量尾读与已有共享 daemon 的只读状态补充；不订阅审批、不启动服务。
 - 进程退出监听和会话清理，Git root / branch 按事件刷新。
-- Compact / Active / Attention / Expanded、1+N Stack、手选 / Auto 和稳定的 Detail Drawer。
+- Compact / Active / Attention / Expanded、左侧按启动时间固定的会话书签、当前会话固定，以及稳定的 Detail Drawer。
 - 近期工具元数据保留最多 8 条，展示最近 3 组；已观察 / 已返回 / 失败不冒充当前 Running。
 - Context 的未知/估算值、70% / 90% 提示；无可靠容量时不编造百分比。
 - 透明非激活窗、窗口置顶开关、专用拖动柄、托盘、鼠标穿透、Alt 临时交互。
@@ -131,7 +131,7 @@ M3-A 的复现命令、截图与边界见 `docs/m3-verification.md`，分批与 
 - Codex embedded / `--no-daemon` 及全部瞬时事件覆盖；只读共享 daemon 入口不是完整 Agent 事件订阅。
 - Claude npm / Node 包装版，以及 transcript 的更广版本兼容。
 - WSL 本地 Collector、完整终端映射、开机启动和签名安装包。
-- 保留 1+N 与手选 / Auto；不做通知收件箱、历史数据库、时间线、搜索分组、云同步或控制面。声音、系统通知、磁吸、Git diff、更多 Agent 和 tab 定位不在当前路线内。
+- 多会话用左侧书签切换并固定当前会话；不做通知收件箱、历史数据库、时间线、搜索分组、云同步或控制面。声音、系统通知、磁吸、Git diff、更多 Agent 和 tab 定位不在当前路线内。
 
 ## 已有实现但尚未完成实机验收
 

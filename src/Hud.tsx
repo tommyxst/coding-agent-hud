@@ -1,12 +1,14 @@
-import type { CSSProperties } from 'react';
-import type { AgentSession, HudMode, HudSettings } from './model';
+import type { ActivityState, AgentSession, HudMode, HudSettings } from './model';
+import type { TelemetrySample } from './visual';
+import { agentTabLabel, orderedSessions } from './focus';
 import { Icon } from './Icon';
 import { PipelineTrack, type MotionState } from './PipelineTrack';
 import { contextReading, displayedAttention, durationAtSnapshot, formatContextPercent, formatCount, safeActionSummary, stateLabel, type DoneRecords } from './state';
 
 function Environment({ session }: { session: AgentSession }) {
-  return <span className="environment mono" title={session.environment.type === 'wsl' ? session.environment.distro : 'Windows'}>{session.environment.type === 'wsl' ? 'WSL' : 'WIN'}</span>;
+  return <span className="environment mono" title={session.environment.type === 'wsl' ? session.environment.distro : 'Windows'}>{session.environment.type === 'wsl' ? 'WSL' : 'Win'}</span>;
 }
+
 export function ContextRing({ session }: { session: AgentSession }) {
   const reading = contextReading(session.context);
   const percent = reading.percent === null ? 0 : Math.min(100, reading.percent);
@@ -46,7 +48,7 @@ function Pipeline({ session, settings, done, motionDisabled }: { session: AgentS
     ? session.runtime.tool ?? 'Tool' : session.runtime.state === 'IDLE' || session.attention.state !== 'NONE' ? 'Standby' : 'Model';
   return <span className={`pipeline pipeline-${state}`}>
     <span className="pipeline-row"><span className="pipeline-node mono"><span className="brand-dot"/>{session.agent.type === 'claude' ? 'CC' : 'CX'}</span><PipelineTrack key={session.id} state={state} disabled={motionDisabled}/><span className="pipeline-node pipeline-target mono" title={target}>{target}</span></span>
-    <span className="action-row"><span className="action-summary" title={safeActionSummary(session, settings.showCommandDetail)}><span className="muted">› </span>{safeActionSummary(session, settings.showCommandDetail)}</span><span className="activity-label mono">{stateLabel(session, done)}</span></span>
+    <span className="action-row"><span className="action-summary tabular" title={safeActionSummary(session, settings.showCommandDetail)}><span className="muted">› </span>{safeActionSummary(session, settings.showCommandDetail)}</span><span className="activity-label mono">{stateLabel(session, done)}</span></span>
     <RecentTools session={session}/>
   </span>;
 }
@@ -80,9 +82,27 @@ function DragHandle({ onDrag }: { onDrag?: () => void }) {
     onPointerDown={event => { if (event.button === 0) { event.preventDefault(); onDrag?.(); } }}><span aria-hidden="true">⠿</span></button>;
 }
 
+function SideDock({ sessions, order, activeId, done, entering, onSelect }: { sessions: AgentSession[]; order: readonly string[]; activeId: string; done: DoneRecords; entering: readonly string[]; onSelect: (id: string) => void }) {
+  const ordered = orderedSessions(order, sessions);
+  return <nav className="side-dock" aria-label="会话标签">{ordered.map(session => {
+    const attention = displayedAttention(session, done);
+    const reading = contextReading(session.context);
+    const active = session.id === activeId;
+    const live = attention === 'NONE' && session.runtime.state !== 'IDLE' && session.runtime.state !== 'STARTING';
+    const scale = reading.percent === null ? 0 : Math.min(100, reading.percent) / 100;
+    const branch = session.project.branch ?? '分支未知';
+    return <button key={session.id} type="button" className={`side-tab agent-${session.agent.type} attention-${attention.toLowerCase()} ${active ? 'is-active' : 'is-background'} ${entering.includes(session.id) ? 'is-entering' : ''}`} aria-current={active ? 'true' : undefined} aria-label={`切换至 ${session.project.name}，${stateLabel(session, done)}`} title={`${session.project.name} · ${branch}`} onClick={() => onSelect(session.id)}>
+      <span className={`side-dot ${live ? 'is-live' : ''}`}/>
+      <span className="side-code mono">{agentTabLabel(session, ordered)}</span>
+      <span className={`side-context context-${reading.level}`}><span style={{ transform: `scaleX(${scale})` }}/></span>
+    </button>;
+  })}</nav>;
+}
+
 interface HudProps {
+  sessions: AgentSession[];
+  order: readonly string[];
   primary: AgentSession;
-  secondary: AgentSession[];
   settings: HudSettings;
   done: DoneRecords;
   mode: HudMode;
@@ -90,25 +110,44 @@ interface HudProps {
   alwaysOnTop: boolean;
   topmostPending: boolean;
   returning: boolean;
+  pinned: boolean;
+  entering: readonly string[];
+  visual: ActivityState;
+  telemetry: TelemetrySample;
   onToggleTopmost: () => void;
+  onTogglePin: () => void;
   onDrag?: () => void;
   onReturn: () => void;
   onMode: (mode: HudMode) => void;
   onSelect: (id: string) => void;
 }
 
-export function Hud({ primary, secondary, settings, done, mode, motionDisabled, alwaysOnTop, topmostPending, returning, onToggleTopmost, onDrag, onReturn, onMode, onSelect }: HudProps) {
+export function Hud({ sessions, order, primary, settings, done, mode, motionDisabled, alwaysOnTop, topmostPending, returning, pinned, entering, visual, telemetry, onToggleTopmost, onDrag, onReturn, onMode, onSelect, onTogglePin }: HudProps) {
   const attention = displayedAttention(primary, done);
   const compact = mode === 'compact';
-  return <section className={`hud-card agent-${primary.agent.type} attention-${attention.toLowerCase()}`} aria-label="Agent HUD" data-primary={primary.id}>
-    {compact ? <div className="compact-head"><DragHandle onDrag={onDrag}/><button className="compact-summary" onClick={() => onMode('active')} aria-label={`展开 ${primary.project.name} 会话`}><span className="brand-dot"/><span className="compact-agent mono">{primary.agent.type === 'claude' ? 'CC' : 'CX'}<span className="compact-env">·{primary.environment.type === 'wsl' ? 'WSL' : 'Win'}</span></span><span className="compact-project">{primary.project.name}</span><span className="compact-status mono">{stateLabel(primary, done)}</span><ContextRing session={primary}/></button><button className={`icon-button ${alwaysOnTop ? 'is-selected' : ''}`} aria-label={alwaysOnTop ? '取消窗口置顶' : '窗口置顶'} title={alwaysOnTop ? '取消窗口置顶' : '窗口置顶'} aria-pressed={alwaysOnTop} disabled={topmostPending} onClick={onToggleTopmost}><Icon name="pin"/></button></div> : <>
-      <header className="hud-header"><DragHandle onDrag={onDrag}/><span className="agent-identity"><span className="brand-dot"/><span className="agent-name">{primary.agent.name}</span><Environment session={primary}/></span><div className="header-actions"><button className={`icon-button ${alwaysOnTop ? 'is-selected' : ''}`} aria-label={alwaysOnTop ? '取消窗口置顶' : '窗口置顶'} title={alwaysOnTop ? '取消窗口置顶' : '窗口置顶'} aria-pressed={alwaysOnTop} disabled={topmostPending} onClick={onToggleTopmost}><Icon name="pin"/></button><button className="icon-button" aria-label="返回工作区" title="返回工作区" onClick={onReturn} disabled={returning}><Icon name="arrow"/></button><button className="icon-button" aria-label="收起为 Compact" onClick={() => onMode('compact')}><Icon name="minus"/></button></div></header>
-      <div className="primary-content"><button className="primary-summary" onClick={() => onMode(mode === 'expanded' ? 'active' : 'expanded')} aria-expanded={mode === 'expanded'} aria-controls="session-details" aria-label={`${mode === 'expanded' ? '收起' : '展开'} ${primary.project.name} 详情`}><span className="project-row"><span className="project-name">{primary.project.name}</span><span className="git-badge mono" title={`${primary.project.branch ?? '分支未知'} · ${primary.project.dirtyFiles === undefined ? '变更数未知' : `${primary.project.dirtyFiles} files`}`}><Icon name="branch"/><span>{primary.project.branch ?? '—'}</span>{primary.project.dirtyFiles === undefined ? null : <span className="dirty-count">{primary.project.dirtyFiles === 0 ? <Icon name="check"/> : `+${primary.project.dirtyFiles}`}</span>}</span></span><Pipeline session={primary} settings={settings} done={done} motionDisabled={motionDisabled}/></button>
-      {mode === 'attention' || (mode === 'expanded' && attention !== 'NONE') ? <AttentionBanner session={primary} settings={settings} done={done} onReturn={onReturn} returning={returning}/> : null}
-      <ContextMeter session={primary}/><div className="telemetry-footer mono"><span>In <b>{formatCount(primary.tokens?.input)}</b><span className="separator">·</span>Out <b>{formatCount(primary.tokens?.output)}</b></span><span className="duration" title="时长截至最近采集；前端不循环计时"><Icon name="clock"/>{durationAtSnapshot(primary)}</span></div></div>
-      <button className="detail-toggle" onClick={() => onMode(mode === 'expanded' ? 'active' : 'expanded')} aria-expanded={mode === 'expanded'} aria-controls="session-details"><span>{mode === 'expanded' ? '收起详情' : '会话详情'}<span className="detail-hint">{settings.showCommandDetail ? '命令可见' : '隐私保护'}</span></span><Icon name="chevron" className={mode === 'expanded' ? 'rotated' : ''}/></button>
-      {mode === 'expanded' ? <DetailDrawer session={primary} settings={settings}/> : null}
-    </>}
-    {secondary.length > 0 ? <div className="secondary-stack" aria-label="其他会话">{secondary.map((session, index) => <button key={session.id} className={`secondary-row agent-${session.agent.type} attention-${displayedAttention(session, done).toLowerCase()}`} style={{ '--row-delay': `${Math.min(index, 6) * 30}ms` } as CSSProperties} onClick={() => onSelect(session.id)} aria-label={`切换至 ${session.project.name}，${stateLabel(session, done)}`}><span className="brand-dot"/><span className="secondary-agent mono">{session.agent.type === 'claude' ? 'CC' : 'CX'}<span>·{session.environment.type === 'wsl' ? 'WSL' : 'Win'}</span></span><span className="secondary-project">{session.project.name}</span><span className="secondary-status mono">{stateLabel(session, done)}</span><ContextRing session={session}/></button>)}</div> : null}
-  </section>;
+  const shown: AgentSession = {
+    ...primary,
+    runtime: {
+      ...primary.runtime,
+      state: attention === 'NONE' ? visual : primary.runtime.state,
+      tool: telemetry.tool,
+      detail: telemetry.detail,
+    },
+    tokens: telemetry.tokens,
+    context: telemetry.context,
+  };
+  const dirty = primary.project.dirtyFiles;
+  return <div className="hud-layout">
+    {sessions.length > 0 ? <SideDock sessions={sessions} order={order} activeId={primary.id} done={done} entering={entering} onSelect={onSelect}/> : null}
+    <section className={`hud-card agent-${primary.agent.type} attention-${attention.toLowerCase()}`} aria-label="Agent HUD" data-primary={primary.id} data-visual={visual}>
+      {compact ? <div className="compact-head"><DragHandle onDrag={onDrag}/><button className="compact-summary" onClick={() => onMode('active')} aria-label={`展开 ${primary.project.name} 会话`}><span className="brand-dot"/><span className="compact-agent mono">{primary.agent.type === 'claude' ? 'CC' : 'CX'}<span className="compact-env">·{primary.environment.type === 'wsl' ? 'WSL' : 'Win'}</span></span><span className="compact-project">{primary.project.name}</span><span className="compact-status mono">{stateLabel(shown, done)}</span><ContextRing session={shown}/></button><button className={`icon-button ${alwaysOnTop ? 'is-selected' : ''}`} aria-label={alwaysOnTop ? '取消窗口置顶' : '窗口置顶'} title={alwaysOnTop ? '取消窗口置顶' : '窗口置顶'} aria-pressed={alwaysOnTop} disabled={topmostPending} onClick={onToggleTopmost}><Icon name="pin"/></button></div> : <>
+        <header className="hud-header"><DragHandle onDrag={onDrag}/><span className="agent-identity"><span className="project-name">{primary.project.name}</span><Environment session={primary}/><span className="git-badge mono" title={`${primary.project.branch ?? '分支未知'} · ${dirty === undefined ? '变更数未知' : `${dirty} files`}`}><Icon name="branch"/><span>{primary.project.branch ?? '—'}</span>{dirty === undefined ? null : <span className="dirty-count">{dirty === 0 ? <Icon name="check"/> : `+${dirty}`}</span>}</span></span><div className="header-actions"><button className={`icon-button ${pinned ? 'is-selected' : ''}`} aria-label={pinned ? '取消固定当前会话' : '固定当前会话'} title={pinned ? '取消固定当前会话' : '固定当前会话'} aria-pressed={pinned} onClick={onTogglePin}><Icon name="pin"/></button><button className={`icon-button ${alwaysOnTop ? 'is-selected' : ''}`} aria-label={alwaysOnTop ? '取消窗口置顶' : '窗口置顶'} title={alwaysOnTop ? '取消窗口置顶' : '窗口置顶'} aria-pressed={alwaysOnTop} disabled={topmostPending} onClick={onToggleTopmost}><Icon name="pin"/></button><button className="icon-button" aria-label="返回工作区" title="返回工作区" onClick={onReturn} disabled={returning}><Icon name="arrow"/></button><button className="icon-button" aria-label="收起为 Compact" onClick={() => onMode('compact')}><Icon name="minus"/></button></div></header>
+        <div className="primary-content"><button className="primary-summary" onClick={() => onMode(mode === 'expanded' ? 'active' : 'expanded')} aria-expanded={mode === 'expanded'} aria-controls="session-details" aria-label={`${mode === 'expanded' ? '收起' : '展开'} ${primary.project.name} 详情`}><Pipeline session={shown} settings={settings} done={done} motionDisabled={motionDisabled}/></button>
+        {mode === 'attention' || (mode === 'expanded' && attention !== 'NONE') ? <AttentionBanner session={primary} settings={settings} done={done} onReturn={onReturn} returning={returning}/> : null}
+        <ContextMeter session={shown}/><div className="telemetry-footer mono"><span>In <b>{formatCount(shown.tokens?.input)}</b><span className="separator">·</span>Out <b>{formatCount(shown.tokens?.output)}</b></span><span className="duration" title="时长截至最近采集；前端不循环计时"><Icon name="clock"/>{durationAtSnapshot(primary)}</span></div></div>
+        <button className="detail-toggle" onClick={() => onMode(mode === 'expanded' ? 'active' : 'expanded')} aria-expanded={mode === 'expanded'} aria-controls="session-details"><span>{mode === 'expanded' ? '收起详情' : '会话详情'}<span className="detail-hint">{settings.showCommandDetail ? '命令可见' : '隐私保护'}</span></span><Icon name="chevron" className={mode === 'expanded' ? 'rotated' : ''}/></button>
+        {mode === 'expanded' ? <DetailDrawer session={shown} settings={settings}/> : null}
+      </>}
+    </section>
+  </div>;
 }

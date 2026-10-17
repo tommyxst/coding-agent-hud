@@ -107,6 +107,13 @@ describe('Done lifecycle and mode transitions', () => {
     expect(automaticMode(sessions[0], {})).toBe('active');
     expect(automaticMode(sessions[2], {})).toBe('compact');
   });
+  it('keeps the card active while visual work outlives a raw idle gap', () => {
+    const session = fixture()[2];
+    session.runtime.state = 'IDLE';
+    expect(automaticMode(session, {}, 'THINKING')).toBe('active');
+    expect(resolveMode(session, {}, null, 'TOOL_RUNNING')).toBe('active');
+    expect(automaticMode(session, {}, 'IDLE')).toBe('compact');
+  });
 });
 
 describe('Context and unknown telemetry', () => {
